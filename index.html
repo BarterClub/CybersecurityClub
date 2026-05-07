@@ -24,6 +24,9 @@
     meetingTime: '4:00 PM',
     meetingRoom: 'Room 259',
 
+    // --- Roster ---
+    members: 12,                       // total club members (officers + general members)
+
     // --- People (rotate yearly) ---
     officers: [
       { role: 'President',        name: 'Joshua Brady',     email: 'joshua.brady@oit.edu',     main: true },
@@ -109,6 +112,8 @@
     cursor: pointer; transition: all .15s; text-decoration: none; background: none; border-top: none; border-bottom: none; border-left: none; font: inherit;
     white-space: nowrap; }
   .tab:first-child { border-left: 1px solid var(--border); }
+  /* Tab-specific default color — declared BEFORE .active/:hover so those still override */
+  .tab.tab-ctf { color: var(--magenta); }
   .tab.active { background: var(--bg-2); color: var(--accent); }
   .tab:hover { color: var(--accent); }
   .tab-count { color: var(--text-dim); font-size: 11px; padding: 4px 12px; }
@@ -130,13 +135,16 @@
     html, body { height: auto; }
     body { display: block; }
     .layout {
-      grid-template-columns: 1fr;
+      grid-template-columns: minmax(0, 1fr);
       grid-template-rows: none;
       flex: none;
       height: auto;
       overflow: visible;
+      max-width: 100%;
     }
-    .col { overflow: visible; }
+    /* min-width:0 lets flex/grid children actually shrink below their min-content size */
+    .col { overflow: visible; overflow-x: hidden; min-width: 0; max-width: 100%; }
+    .col > .panel { min-width: 0; max-width: 100%; }
     .layout > main.col { order: 1; }
     .layout > aside.col:first-of-type { order: 2; }
     .layout > aside.col:last-of-type { order: 3; }
@@ -157,7 +165,8 @@
     #term { height: 55vh !important; min-height: 320px !important; }
     .ascii-art { font-size: 6.5px; }
     .statusbar { font-size: 10px; }
-    .status-cell { padding: 3px 8px; }
+    .status-cell { padding: 3px 6px; }
+    .status-mode { padding: 3px 8px; }
   }
 
   /* PANELS */
@@ -182,6 +191,12 @@
     background: linear-gradient(90deg, transparent, rgba(255,255,255,.3), transparent);
     animation: shimmer 2s infinite; }
   @keyframes shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+  .sparkline { display: block; width: 100%; height: 24px; margin: 4px 0 8px;
+    background: var(--bg-2); border: 1px solid var(--border); }
+  .sparkline polyline { fill: none; stroke: var(--info); stroke-width: 1.2;
+    stroke-linecap: round; stroke-linejoin: round;
+    filter: drop-shadow(0 0 2px var(--info));
+    transition: stroke-dashoffset .3s linear; }
   .core-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 8px; }
   .core { text-align: center; padding: 4px; background: var(--bg-2); border: 1px solid var(--border); font-size: 10px; }
   .core-label { color: var(--text-dim); }
@@ -293,8 +308,8 @@
     border: 1px solid var(--magenta); background: rgba(212,132,255,0.1); }
 
   /* STATUS BAR */
-  .statusbar { display: flex; align-items: center; background: var(--accent);
-    color: var(--bg-0); font-size: 11px; font-weight: 700; letter-spacing: .05em; }
+  .statusbar { display: flex; align-items: center; flex-wrap: wrap; background: var(--accent);
+    color: var(--bg-0); font-size: 11px; font-weight: 700; letter-spacing: .05em; min-width: 0; }
   .status-mode { background: var(--bg-0); color: var(--accent); padding: 4px 12px;
     border-right: 2px solid var(--accent); }
   .status-cell { padding: 4px 12px; border-right: 1px solid rgba(0,0,0,.2); }
@@ -315,16 +330,16 @@
   <div class="topbar-left">
     <span class="topbar-brand" onclick="location.reload()" title="Click to reload">OIT Cybersecurity Club Portland</span>
     <nav class="tabs">
-      <button data-tab="home"    class="tab active">index.tsx <span style="opacity:.6">home</span></button>
-      <button data-tab="about"   class="tab">about.md <span style="opacity:.6">about</span></button>
-      <button data-tab="events"  class="tab">events.json <span style="opacity:.6">events</span></button>
-      <button data-tab="contact" class="tab">contact.sh <span style="opacity:.6">contact</span></button>
-      <button data-tab="ctf"     class="tab" style="color:var(--magenta)">ctf.md <span style="opacity:.6">ctf</span></button>
+      <button data-tab="home"    class="tab active">index.tsx</button>
+      <button data-tab="about"   class="tab">about.md</button>
+      <button data-tab="events"  class="tab">events.json</button>
+      <button data-tab="contact" class="tab">contact.sh</button>
+      <button data-tab="ctf"     class="tab tab-ctf">ctf.md</button>
     </nav>
   </div>
   <div class="topbar-right">
     <span class="score-badge" id="score-badge">CTF: 0/7</span>
-    <a class="btn-register" href="https://theroost.oit.edu/PMCYB/club_signup" target="_blank" rel="noopener">join us<sub style="opacity:.6">↵</sub></a>
+    <a class="btn-register" href="https://theroost.oit.edu/PMCYB/club_signup" target="_blank" rel="noopener">join us</a>
   </div>
 </header>
 
@@ -368,6 +383,9 @@
       <div class="panel-header"><span><span class="panel-header-icon">󰛳</span> Network</span></div>
       <div class="panel-body">
         <div class="stat-row"><span class="stat-label">↓ in</span><span class="stat-value" id="net-in">124 KB/s</span></div>
+        <svg class="sparkline" id="net-in-spark" viewBox="0 0 100 24" preserveAspectRatio="none" aria-hidden="true">
+          <polyline id="net-in-spark-line" points=""></polyline>
+        </svg>
         <div class="stat-row"><span class="stat-label">↑ out</span><span class="stat-value" id="net-out">56 KB/s</span></div>
         <div class="stat-row" style="font-size:10px;color:var(--text-dim);margin-top:6px"><span>eth0:</span><span>10.50.0.1</span></div>
       </div>
@@ -448,6 +466,26 @@
      ANIMATED STATS (simulated)
      ============================================================ */
   function jitter(b, r) { return Math.max(0, Math.min(100, b + (Math.random()-0.5)*r)); }
+  // Like jitter() but without the 0..100 clamp — for values that aren't percentages (e.g. network KB/s).
+  function jitterFree(b, r) { return Math.max(0, b + (Math.random()-0.5)*r); }
+  // Rolling buffer for the network-in sparkline (most recent N samples)
+  const NET_IN_HISTORY = [];
+  const NET_IN_MAX_POINTS = 40;
+  function drawNetInSparkline() {
+    const line = document.getElementById('net-in-spark-line');
+    if (!line || NET_IN_HISTORY.length < 2) return;
+    const w = 100, h = 24, pad = 2;
+    const min = Math.min(...NET_IN_HISTORY);
+    const max = Math.max(...NET_IN_HISTORY);
+    const span = Math.max(1, max - min);
+    const step = w / (NET_IN_MAX_POINTS - 1);
+    const pts = NET_IN_HISTORY.map((v, i) => {
+      const x = i * step;
+      const y = pad + (h - pad*2) * (1 - (v - min) / span);
+      return x.toFixed(2) + ',' + y.toFixed(2);
+    }).join(' ');
+    line.setAttribute('points', pts);
+  }
   setInterval(() => {
     const cpu = jitter(28, 20);
     document.getElementById('cpu-pct').textContent = cpu.toFixed(1)+'%';
@@ -455,8 +493,12 @@
     document.querySelectorAll('[data-core]').forEach(el => {
       el.textContent = Math.floor(jitter(30, 40))+'%';
     });
-    document.getElementById('net-in').textContent  = Math.floor(jitter(140, 80))+' KB/s';
-    document.getElementById('net-out').textContent = Math.floor(jitter(60,  40))+' KB/s';
+    const netIn = Math.floor(jitterFree(140, 80));
+    document.getElementById('net-in').textContent  = netIn+' KB/s';
+    document.getElementById('net-out').textContent = Math.floor(jitterFree(60,  40))+' KB/s';
+    NET_IN_HISTORY.push(netIn);
+    if (NET_IN_HISTORY.length > NET_IN_MAX_POINTS) NET_IN_HISTORY.shift();
+    drawNetInSparkline();
   }, 1500);
 
   /* ============================================================
@@ -1665,7 +1707,7 @@ ${bot}
     const founded  = document.querySelector('.info-row .info-val');  // first value cell — Founded
     if (founded) founded.textContent = CONFIG.founded;
     const members  = document.getElementById('info-members');
-    if (members) members.textContent = CONFIG.officers.length + 1;  // officers + advisor
+    if (members) members.textContent = CONFIG.members;
     const location = document.querySelectorAll('.info-row .info-val');
     if (location.length) location[location.length-1].textContent = CONFIG.meetingRoom;
 
