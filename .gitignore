@@ -1,0 +1,48 @@
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Node (in case you add npm later)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnp/
+.pnp.js
+
+# Env / secrets
+.env
+.env.local
+.env.*.local
+*.pem
+
+# Build output (in case you add a build step later)
+dist/
+build/
+out/
+.next/
+.turbo/
+.cache/
+
+# Logs
+*.log
+logs/
+
+# Python (if you add backend tooling)
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Misc
+.tmp/
+.scratch/

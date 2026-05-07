@@ -1,0 +1,1696 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+
+<script>
+  /* ============================================================================
+   ▒▓█  EDIT ME — CLUB CONFIG  █▓▒
+   Everything in this block drives the site. Update officers, meeting
+   info, links, etc. here and the page will reflect it on next reload.
+   The rest of the file (CSS, terminal commands, CTF logic) shouldn't
+   need to change for routine edits.
+   ============================================================================ */
+  const CONFIG = {
+    // --- Identity ---
+    clubName:    'OIT Cybersecurity Club Portland',
+    clubShort:   'cybersec',           // terminal hostname (`hacker@<short>`) and file path
+    campusName:  'Oregon Tech Portland-Metro',
+    founded:     2025,
+    description: "Hands-on security, CTFs, and hacking workshops at Oregon Tech's Portland-Metro campus.",
+
+    // --- Meetings ---
+    meetingDay:  'Thursday',           // weekday name; auto-computes upcoming meetings
+    meetingTime: '4:00 PM',
+    meetingRoom: 'Room 259',
+
+    // --- People (rotate yearly) ---
+    officers: [
+      { role: 'President',        name: 'Joshua Brady',     email: 'joshua.brady@oit.edu',     main: true },
+      { role: 'Vice-President',   name: 'Anteneh Demissie', email: 'anteneh.demissie@oit.edu' },
+      { role: 'Treasurer',        name: 'Chris Hall',       email: 'chris.hall@oit.edu' },
+      { role: 'Secretary',        name: 'Scott Reinholtz',  email: 'scott.reinholtz@oit.edu' },
+      { role: 'Training Officer', name: 'Miguel Torres',    email: 'miguel.torres@oit.edu' },
+    ],
+    advisor: { name: 'Malini Nagasundaram', email: 'malini.nagasundaram@oit.edu' },
+
+    // --- External links ---
+    links: {
+      signup:  'https://theroost.oit.edu/PMCYB/club_signup',
+      roost:   'https://theroost.oit.edu/feeds?type=club&type_id=35576&tab=about',
+      discord: 'https://discord.gg/EXAMPLE',
+    },
+  };
+  // Helper: strip the http(s):// prefix when displaying a URL
+  const _u = (u) => u.replace(/^https?:\/\//, '');
+  /* ============================================================================
+     END CONFIG — most users won't need to edit anything below this line
+     ============================================================================ */
+</script>
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OIT Cybersecurity Club Portland // terminal</title>
+<meta name="description" content="OIT Cybersecurity Club Portland — hands-on security, CTFs, and hacking workshops at Oregon Tech's Portland-Metro campus.">
+
+<!--
+  ============================================================
+  CTF FLAG #1 — recon: this comment is right here in the HTML.
+  flag{html_recon_is_step_one}
+  ============================================================
+-->
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    /* Oregon Tech palette: navy #033a6b + gold #FFD24F */
+    --bg-0: #04111f; --bg-1: #08192e; --bg-2: #0e2542;
+    --border: #1a3a5c; --text: #eaf0f6; --text-dim: #7088a3;
+    --accent: #ffd24f; --accent-dim: #8a6e1a;
+    --warn: #ff8c42; --danger: #ff5e5e; --info: #6cb6ff; --magenta: #d484ff;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    background: var(--bg-0); color: var(--text);
+    font-family: 'JetBrains Mono', 'Courier New', monospace;
+    font-size: 13px; line-height: 1.5; height: 100vh; overflow-x: hidden;
+  }
+  body { display: flex; flex-direction: column; }
+  body::before {
+    content: ''; position: fixed; inset: 0;
+    background: repeating-linear-gradient(0deg,
+      rgba(255,210,79,.02) 0, rgba(255,210,79,.02) 1px,
+      transparent 1px, transparent 3px);
+    pointer-events: none; z-index: 1000;
+  }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(255,210,79,.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,210,79,.025) 1px, transparent 1px);
+    background-size: 32px 32px;
+    pointer-events: none; z-index: -1;
+  }
+
+  /* TOPBAR */
+  .topbar { display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 1px solid var(--border); padding: 8px 20px; background: var(--bg-1);
+    flex-wrap: wrap; gap: 8px; row-gap: 6px; }
+  .topbar-left { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; row-gap: 6px; }
+  .topbar-right { display: flex; align-items: center; gap: 12px; flex-shrink: 0; flex-wrap: nowrap; }
+  .topbar-brand { color: var(--accent); font-weight: 700; letter-spacing: .05em;
+    cursor: pointer; user-select: none; transition: text-shadow .15s; }
+  .topbar-brand:hover { text-shadow: 0 0 8px var(--accent-dim); }
+  .topbar-brand::before { content: '◆ '; color: var(--warn); }
+  .tabs { display: flex; gap: 0; flex-wrap: wrap; }
+  .tab { padding: 4px 14px; color: var(--text-dim); border-right: 1px solid var(--border);
+    cursor: pointer; transition: all .15s; text-decoration: none; background: none; border-top: none; border-bottom: none; border-left: none; font: inherit;
+    white-space: nowrap; }
+  .tab:first-child { border-left: 1px solid var(--border); }
+  .tab.active { background: var(--bg-2); color: var(--accent); }
+  .tab:hover { color: var(--accent); }
+  .tab-count { color: var(--text-dim); font-size: 11px; padding: 4px 12px; }
+  .btn-register { background: var(--accent); color: var(--bg-0); padding: 6px 16px;
+    text-decoration: none; font-weight: 700; transition: all .15s;
+    display: inline-flex; align-items: center; gap: 6px; cursor: pointer; border: none; font: inherit; }
+  .btn-register:hover { background: var(--warn); box-shadow: 0 0 20px var(--accent); }
+  .btn-register::before { content: '['; opacity: .6; }
+  .btn-register::after { content: ']'; opacity: .6; }
+
+  /* LAYOUT */
+  .layout { display: grid; grid-template-columns: 280px 1fr 280px;
+    grid-template-rows: minmax(0, 1fr);
+    gap: 12px; padding: 12px; flex: 1; min-height: 0; overflow: hidden; }
+  .col { display: flex; flex-direction: column; gap: 12px; min-height: 0; overflow: hidden; }
+
+  /* Tablet & mobile: single column, terminal first, sides stack below */
+  @media (max-width: 1100px) {
+    html, body { height: auto; }
+    body { display: block; }
+    .layout {
+      grid-template-columns: 1fr;
+      grid-template-rows: none;
+      flex: none;
+      height: auto;
+      overflow: visible;
+    }
+    .col { overflow: visible; }
+    .layout > main.col { order: 1; }
+    .layout > aside.col:first-of-type { order: 2; }
+    .layout > aside.col:last-of-type { order: 3; }
+    /* Override the desktop flex sizing — give the terminal a real height */
+    .layout > main.col > .panel { flex: none !important; min-height: 0 !important; }
+    #term { flex: none !important; height: 60vh !important; min-height: 400px !important; }
+  }
+
+  /* Phones: tighter spacing + smaller terminal */
+  @media (max-width: 600px) {
+    .layout { padding: 8px; gap: 8px; }
+    .topbar { padding: 6px 10px; }
+    .topbar-left { gap: 8px; row-gap: 6px; }
+    .topbar-brand { font-size: 11px; }
+    .tab { padding: 4px 8px; font-size: 11px; }
+    .tab-count, .score-badge { font-size: 10px; }
+    .btn-register { padding: 5px 10px; font-size: 11px; }
+    #term { height: 55vh !important; min-height: 320px !important; }
+    .ascii-art { font-size: 6.5px; }
+    .statusbar { font-size: 10px; }
+    .status-cell { padding: 3px 8px; }
+  }
+
+  /* PANELS */
+  .panel { background: var(--bg-1); border: 1px solid var(--border); position: relative; }
+  .panel-header { display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 12px; border-bottom: 1px solid var(--border);
+    color: var(--text-dim); font-size: 11px; text-transform: uppercase; letter-spacing: .1em; }
+  .panel-header-icon { color: var(--warn); }
+  .panel-body { padding: 12px; }
+
+  /* STATS */
+  .stat-row { display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 6px; font-size: 12px; }
+  .stat-label { color: var(--text-dim); text-transform: uppercase; letter-spacing: .05em; }
+  .stat-value { color: var(--text); }
+  .stat-value.hi { color: var(--warn); }
+  .progress { height: 6px; background: var(--bg-2); border: 1px solid var(--border);
+    margin-bottom: 10px; overflow: hidden; position: relative; }
+  .progress-fill { height: 100%; background: var(--accent); transition: width .6s ease; position: relative; }
+  .progress-fill.warn { background: var(--warn); }
+  .progress-fill::after { content: ''; position: absolute; inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,.3), transparent);
+    animation: shimmer 2s infinite; }
+  @keyframes shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+  .core-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 8px; }
+  .core { text-align: center; padding: 4px; background: var(--bg-2); border: 1px solid var(--border); font-size: 10px; }
+  .core-label { color: var(--text-dim); }
+  .core-val { color: var(--accent); font-weight: 700; }
+
+  /* PROCESSES */
+  .proc-table { width: 100%; font-size: 11px; border-collapse: collapse; }
+  .proc-table th { text-align: left; color: var(--text-dim); font-weight: 400; font-size: 10px;
+    text-transform: uppercase; padding: 4px 6px; border-bottom: 1px solid var(--border); }
+  .proc-table td { padding: 4px 6px; border-bottom: 1px dotted var(--border); }
+  .proc-table tr:hover { background: var(--bg-2); }
+  .proc-pid { color: var(--text-dim); }
+  .proc-name { color: var(--info); }
+
+  /* ASCII + WELCOME */
+  .ascii-art { color: var(--accent); font-size: 11px; line-height: 1.1; white-space: pre;
+    text-shadow: 0 0 8px var(--accent-dim); overflow: hidden; margin-bottom: 16px; }
+  @media (max-width: 700px) { .ascii-art { font-size: 7px; } }
+  .welcome { padding: 16px 0; }
+  .welcome-line { color: var(--text); margin-bottom: 4px; }
+  .welcome-line .prompt { color: var(--accent); }
+  .welcome-line .key { color: var(--warn); }
+  .welcome-line .val { color: var(--info); }
+
+  /* TERMINAL */
+  .terminal { background: var(--bg-0); border: 1px solid var(--border);
+    padding: 12px; font-size: 12px; height: 420px;
+    margin-top: 12px; cursor: text;
+    display: flex; flex-direction: column; min-height: 0;
+    overflow-y: auto; }
+  .terminal:focus-within { box-shadow: 0 0 0 1px var(--accent), 0 0 20px var(--accent-dim); }
+  .term-output { flex: 0 0 auto; }
+  .term-line { white-space: pre-wrap; word-break: break-word; margin-bottom: 2px; }
+  .term-line.prompt-line { display: flex; gap: 6px; align-items: baseline; flex-wrap: nowrap; min-width: 0; }
+  .term-line.prompt-line .term-cmd { white-space: pre-wrap; word-break: break-word; min-width: 0; }
+  .term-prompt { color: var(--accent); flex-shrink: 0; white-space: nowrap; }
+  .term-path { color: var(--info); flex-shrink: 0; white-space: nowrap; }
+  .term-dollar { color: var(--text-dim); flex-shrink: 0; }
+  .term-cmd { color: var(--text); }
+  .term-out-info { color: var(--info); }
+  .term-out-ok { color: var(--accent); }
+  .term-out-warn { color: var(--warn); }
+  .term-out-err { color: var(--danger); }
+  .term-out-dim { color: var(--text-dim); }
+  .term-out-mag { color: var(--magenta); }
+  .term-out a { color: var(--info); text-decoration: underline; }
+  .term-out a:hover { color: var(--accent); }
+  .term-input-line { display: flex; gap: 6px; align-items: baseline; flex-wrap: nowrap; min-width: 0; }
+  .term-input { flex: 1; min-width: 0; background: transparent; border: none; outline: none;
+    color: var(--text); font: inherit;
+    caret-color: var(--accent); caret-shape: block; }
+  .terminal,
+  #activity-log { scrollbar-color: var(--accent-dim) var(--bg-0); scrollbar-width: thin; }
+  .terminal::-webkit-scrollbar,
+  #activity-log::-webkit-scrollbar { width: 10px; }
+  .terminal::-webkit-scrollbar-track,
+  #activity-log::-webkit-scrollbar-track { background: var(--bg-0); border-left: 1px solid var(--border); }
+  .terminal::-webkit-scrollbar-thumb,
+  #activity-log::-webkit-scrollbar-thumb { background: var(--accent-dim); border: 2px solid var(--bg-0); border-radius: 0; }
+  .terminal::-webkit-scrollbar-thumb:hover,
+  #activity-log::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+
+  /* PAGES (SPA-style content swap) */
+  .page { display: none; }
+  .page.active { display: block; animation: fadeIn .3s ease; }
+  .page h2 {
+    color: var(--accent); font-size: 14px; text-transform: uppercase;
+    letter-spacing: .15em; margin-bottom: 12px; padding-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+  }
+  .page h2::before { content: '$ cat '; color: var(--text-dim); }
+  .page p { margin-bottom: 12px; max-width: 70ch; }
+  .page ul { list-style: none; padding-left: 0; margin-bottom: 12px; }
+  .page ul li { padding: 4px 0; padding-left: 16px; position: relative; }
+  .page ul li::before { content: '▸'; position: absolute; left: 0; color: var(--accent); }
+  .event-card { display: grid; grid-template-columns: 100px 1fr; gap: 12px;
+    padding: 10px; background: var(--bg-2); border-left: 3px solid var(--accent);
+    margin-bottom: 8px; }
+  .event-date { color: var(--warn); font-weight: 700; }
+  .event-title { color: var(--info); font-weight: 700; }
+  .event-where { color: var(--text-dim); font-size: 11px; }
+  .contact-grid { display: grid; grid-template-columns: 120px 1fr; gap: 8px 16px; max-width: 500px; }
+  .contact-grid dt { color: var(--text-dim); }
+  .contact-grid dd a { color: var(--accent); text-decoration: none; }
+  .contact-grid dd a:hover { text-decoration: underline; }
+
+  /* INFO ROWS */
+  .info-row { display: flex; justify-content: space-between; padding: 6px 0;
+    border-bottom: 1px dotted var(--border); font-size: 12px; }
+  .info-row:last-child { border-bottom: none; }
+  .info-key { color: var(--text-dim); }
+  .info-val { color: var(--accent); }
+
+  /* LINKS / LOGS */
+  .links-list { list-style: none; }
+  .links-list li { padding: 6px 0; border-bottom: 1px dotted var(--border); }
+  .links-list a { color: var(--text); text-decoration: none;
+    display: flex; align-items: center; gap: 8px; transition: all .15s; }
+  .links-list a:hover { color: var(--accent); transform: translateX(4px); }
+  .links-list a::before { content: '→'; color: var(--accent); }
+  .log-line { font-size: 11px; padding: 2px 0; color: var(--text-dim); }
+  .log-tag { display: inline-block; width: 56px; font-weight: 700; }
+  .log-info .log-tag { color: var(--info); }
+  .log-ok   .log-tag { color: var(--accent); }
+  .log-warn .log-tag { color: var(--warn); }
+
+  /* CTF SCORE BADGE */
+  .score-badge { color: var(--magenta); font-size: 11px; padding: 4px 10px;
+    border: 1px solid var(--magenta); background: rgba(212,132,255,0.1); }
+
+  /* STATUS BAR */
+  .statusbar { display: flex; align-items: center; background: var(--accent);
+    color: var(--bg-0); font-size: 11px; font-weight: 700; letter-spacing: .05em; }
+  .status-mode { background: var(--bg-0); color: var(--accent); padding: 4px 12px;
+    border-right: 2px solid var(--accent); }
+  .status-cell { padding: 4px 12px; border-right: 1px solid rgba(0,0,0,.2); }
+  .status-spacer { flex: 1; }
+  .status-cell.right { border-right: none; border-left: 1px solid rgba(0,0,0,.2); }
+
+  .panel { animation: fadeIn .6s ease backwards; }
+  .panel:nth-child(1) { animation-delay: .05s; }
+  .panel:nth-child(2) { animation-delay: .15s; }
+  .panel:nth-child(3) { animation-delay: .25s; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+</style>
+</head>
+<body data-z="ZmxhZ3tjc3NfZGF0YV9hdHRyc19hcmVfdmlzaWJsZX0=">
+
+<!-- TOPBAR -->
+<header class="topbar">
+  <div class="topbar-left">
+    <span class="topbar-brand" onclick="location.reload()" title="Click to reload">OIT Cybersecurity Club Portland</span>
+    <nav class="tabs">
+      <button data-tab="home"    class="tab active">index.tsx <span style="opacity:.6">home</span></button>
+      <button data-tab="about"   class="tab">about.md <span style="opacity:.6">about</span></button>
+      <button data-tab="events"  class="tab">events.json <span style="opacity:.6">events</span></button>
+      <button data-tab="contact" class="tab">contact.sh <span style="opacity:.6">contact</span></button>
+      <button data-tab="ctf"     class="tab" style="color:var(--magenta)">ctf.md <span style="opacity:.6">ctf</span></button>
+    </nav>
+  </div>
+  <div class="topbar-right">
+    <span class="score-badge" id="score-badge">CTF: 0/7</span>
+    <a class="btn-register" href="https://theroost.oit.edu/PMCYB/club_signup" target="_blank" rel="noopener">join us<sub style="opacity:.6">↵</sub></a>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- LEFT: stats -->
+  <aside class="col">
+    <section class="panel">
+      <div class="panel-header">
+        <span><span class="panel-header-icon">󰻠</span> CPU</span>
+        <span>usage <span id="cpu-pct">25.0%</span></span>
+      </div>
+      <div class="panel-body">
+        <div class="progress"><div class="progress-fill" id="cpu-bar" style="width:25%"></div></div>
+        <div class="core-grid">
+          <div class="core"><div class="core-label">C0</div><div class="core-val" data-core>32%</div></div>
+          <div class="core"><div class="core-label">C1</div><div class="core-val" data-core>18%</div></div>
+          <div class="core"><div class="core-label">C2</div><div class="core-val" data-core>45%</div></div>
+          <div class="core"><div class="core-label">C3</div><div class="core-val" data-core>27%</div></div>
+        </div>
+      </div>
+    </section>
+    <section class="panel">
+      <div class="panel-header"><span><span class="panel-header-icon">󰍛</span> Memory</span></div>
+      <div class="panel-body">
+        <div class="stat-row"><span class="stat-label">RAM</span><span class="stat-value">26.9K / 64K</span></div>
+        <div class="progress"><div class="progress-fill warn" style="width:42%"></div></div>
+        <div class="stat-row"><span class="stat-label">Swap</span><span class="stat-value">1.9K / 16K</span></div>
+        <div class="progress"><div class="progress-fill" style="width:12%"></div></div>
+      </div>
+    </section>
+    <section class="panel">
+      <div class="panel-header"><span><span class="panel-header-icon">󰋊</span> Disk</span></div>
+      <div class="panel-body">
+        <div class="stat-row"><span class="stat-label">/dev/sda1</span><span class="stat-value hi">67%</span></div>
+        <div class="progress"><div class="progress-fill warn" style="width:67%"></div></div>
+        <div class="stat-row" style="font-size:10px;color:var(--text-dim)"><span>134G / 200G</span><span>ext4</span></div>
+      </div>
+    </section>
+    <section class="panel">
+      <div class="panel-header"><span><span class="panel-header-icon">󰛳</span> Network</span></div>
+      <div class="panel-body">
+        <div class="stat-row"><span class="stat-label">↓ in</span><span class="stat-value" id="net-in">124 KB/s</span></div>
+        <div class="stat-row"><span class="stat-label">↑ out</span><span class="stat-value" id="net-out">56 KB/s</span></div>
+        <div class="stat-row" style="font-size:10px;color:var(--text-dim);margin-top:6px"><span>eth0:</span><span>10.50.0.1</span></div>
+      </div>
+    </section>
+  </aside>
+
+  <!-- CENTER: pages + terminal -->
+  <main class="col">
+    <section class="panel" style="flex:1; display:flex; flex-direction:column; min-height:0;">
+      <div class="panel-header">
+        <span><span class="panel-header-icon">~</span>/cybersec/<span id="current-file">index.tsx</span></span>
+        <span>main</span>
+      </div>
+      <div class="terminal" id="term" tabindex="0" style="flex:1; height:auto; min-height:0; margin:0; border:0;">
+        <div class="term-output" id="term-output"></div>
+        <div class="term-input-line">
+          <span class="term-prompt">hacker@cybersec</span>
+          <span class="term-path" id="term-path">~/projects</span>
+          <span class="term-dollar">$</span>
+          <input class="term-input" id="term-input" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- RIGHT: club info / quick links / recent activity -->
+  <aside class="col">
+    <section class="panel">
+      <div class="panel-header"><span><span class="panel-header-icon">󰃭</span> Club Info</span></div>
+      <div class="panel-body">
+        <div class="info-row"><span class="info-key">Founded</span><span class="info-val">2025</span></div>
+        <div class="info-row"><span class="info-key">Members</span><a href="#" onclick="switchTab('contact');return false;" class="info-val" id="info-members" style="text-decoration:none">6</a></div>
+        <div class="info-row"><span class="info-key">Next meeting</span><span class="info-val" id="info-next">—</span></div>
+        <div class="info-row"><span class="info-key">Focus</span><span class="info-val">Cybersec</span></div>
+        <div class="info-row"><span class="info-key">Location</span><span class="info-val">Room 259</span></div>
+      </div>
+    </section>
+    <section class="panel">
+      <div class="panel-header"><span><span class="panel-header-icon">⚡</span> Quick Links</span></div>
+      <div class="panel-body">
+        <ul class="links-list">
+          <li><a href="https://theroost.oit.edu/PMCYB/club_signup" target="_blank" rel="noopener">Join the club</a></li>
+          <li><a href="https://theroost.oit.edu/feeds?type=club&type_id=35576&tab=about" target="_blank" rel="noopener">The Roost page</a></li>
+          <li><a href="https://discord.gg/EXAMPLE">Discord server</a></li>
+        </ul>
+      </div>
+    </section>
+    <section class="panel" style="flex:1; display:flex; flex-direction:column; min-height:0;">
+      <div class="panel-header">
+        <span><span class="panel-header-icon">≡</span> Recent Activity</span>
+        <span style="color:var(--text-dim)">tail -f</span>
+      </div>
+      <div class="panel-body" id="activity-log" style="flex:1; overflow:auto; min-height:0;">
+        <div class="log-line log-info"><span class="log-tag">[INFO]</span> Club founded — 2025</div>
+        <div class="log-line log-ok"><span class="log-tag">[ OK ]</span> <a href="#" onclick="switchTab('contact');return false;" style="color:inherit;text-decoration:none"><span id="log-members">6</span> officers onboarded — view roster →</a></div>
+        <div class="log-line log-ok"><span class="log-tag">[ OK ]</span> Workshops weekly · Room 259</div>
+        <div class="log-line log-warn"><span class="log-tag">[WARN]</span> Pizza inventory at 12%</div>
+        <div class="log-line log-info"><span class="log-tag">[INFO]</span> Next: <span id="log-next-meeting">—</span></div>
+        <div class="log-line log-ok"><span class="log-tag">[WAIT]</span> Awaiting next CTF...</div>
+      </div>
+    </section>
+  </aside>
+</div>
+
+<footer class="statusbar">
+  <span class="status-mode">NORMAL</span>
+  <span class="status-cell" id="status-page">main</span>
+  <span class="status-cell" style="color:#1a3d1a">● ONLINE</span>
+  <span class="status-spacer"></span>
+  <span class="status-cell right">UTF-8</span>
+  <span class="status-cell right" id="status-score">CTF 0/7</span>
+  <span class="status-cell right" id="clock">--:--:--</span>
+</footer>
+
+<script>
+  /* ============================================================
+     ANIMATED STATS (simulated)
+     ============================================================ */
+  function jitter(b, r) { return Math.max(0, Math.min(100, b + (Math.random()-0.5)*r)); }
+  setInterval(() => {
+    const cpu = jitter(28, 20);
+    document.getElementById('cpu-pct').textContent = cpu.toFixed(1)+'%';
+    document.getElementById('cpu-bar').style.width = cpu+'%';
+    document.querySelectorAll('[data-core]').forEach(el => {
+      el.textContent = Math.floor(jitter(30, 40))+'%';
+    });
+    document.getElementById('net-in').textContent  = Math.floor(jitter(140, 80))+' KB/s';
+    document.getElementById('net-out').textContent = Math.floor(jitter(60,  40))+' KB/s';
+  }, 1500);
+
+  /* ============================================================
+     CLOCK + UPTIME
+     ============================================================ */
+  const start = Date.now();
+  setInterval(() => {
+    const now = new Date();
+    const pad = n => n.toString().padStart(2, '0');
+    document.getElementById('clock').textContent =
+      pad(now.getHours())+':'+pad(now.getMinutes())+':'+pad(now.getSeconds());
+    const e = Math.floor((Date.now()-start)/1000);
+    document.getElementById('uptime').textContent =
+      pad(Math.floor(e/3600))+':'+pad(Math.floor((e%3600)/60))+':'+pad(e%60);
+  }, 1000);
+
+  /* ============================================================
+     TAB / PAGE SWITCHING
+     ============================================================ */
+  const PAGES = ['home', 'about', 'events', 'contact', 'ctf'];
+  const FILES = { home:'index.tsx', about:'about.md', events:'events.json', contact:'contact.sh', ctf:'ctf.md' };
+  function switchTab(name) {
+    if (!PAGES.includes(name)) return;
+    document.querySelectorAll('.tab').forEach(t =>
+      t.classList.toggle('active', t.dataset.tab === name));
+    document.getElementById('current-file').textContent = FILES[name];
+    addActivity('ok', `viewed <span class="term-out-info">${name}</span>`);
+    printPage(name);
+    document.getElementById('term-input').focus({ preventScroll: true });
+  }
+  document.querySelectorAll('.tab').forEach(t =>
+    t.addEventListener('click', () => switchTab(t.dataset.tab)));
+
+  /* ============================================================
+     CTF STATE
+     ============================================================
+     Flags are stored hashed (simple FNV-1a) so casual View Source
+     doesn't spoil them. Determined players will still find them —
+     that's the point of a CTF. Replace these with your own.
+     ============================================================ */
+  function fnv1a(s) {
+    let h = 0x811c9dc5;
+    for (let i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = (h + ((h<<1) + (h<<4) + (h<<7) + (h<<8) + (h<<24))) >>> 0;
+    }
+    return h.toString(16).padStart(8, '0');
+  }
+
+  const CHALLENGES = [
+    { id:1, name:'recon',          points:50,
+      brief:'Some files leave secrets in plain sight. View Page Source — really. Search the HTML for "flag{".',
+      hint:'Right-click → View Page Source. Use Ctrl+F. Look near the top of the document.',
+      hash: fnv1a('flag{html_recon_is_step_one}') },
+    { id:2, name:'console',        points:75,
+      brief:"When this page loaded, something printed to the browser's developer console. Open DevTools → Console tab.",
+      hint:'F12 → Console tab. The flag was logged as plaintext.',
+      hash: fnv1a('flag{console_log_is_loud}') },
+    { id:3, name:'base64',         points:100,
+      brief:'Decode this: ZmxhZ3tiNjRfaXNfbm90X2VuY3J5cHRpb259',
+      hint:"In the terminal: `python` then `import base64; base64.b64decode('...')`. Or any base64 decoder.",
+      hash: fnv1a('flag{b64_is_not_encryption}') },
+    { id:4, name:'rot13',          points:100,
+      brief:'Decode (ROT13): synt{ebgngr_guvegrra_cynprf}',
+      hint:"`python` then `import codecs; codecs.decode('...', 'rot13')`",
+      hash: fnv1a('flag{rotate_thirteen_places}') },
+    { id:5, name:'obfuscation',    points:150,
+      brief:"There's a 5th flag hidden inside this page's JavaScript, assembled from string fragments. Read the code.",
+      hint:"Search the page source for variables named like _x1, _x2, _x3 ... they concatenate.",
+      hash: fnv1a('flag{string_concat_is_weak_obfuscation}') },
+    { id:6, name:'xor',            points:200,
+      brief:'XOR these two hex strings together: 0x1c1d090f1d4f4e1c1c100e15531f1700551b1f10110a16  XOR  0x7b7878787878787878787878787878787878787878787878   (note: lengths must match)',
+      hint:"Use the `python` command. `bytes(a^b for a,b in zip(bytes.fromhex('...'), bytes.fromhex('...')))`",
+      hash: fnv1a('flag{xor_is_just_addition_mod_2}') },
+    { id:7, name:'steganography',  points:175,
+      brief:'Sometimes data hides in HTML attributes. Inspect the <body> element. Anything... base64-shaped?',
+      hint:'F12 → Elements → click <body>. Look for an unusual data-* attribute. Then base64 decode the value.',
+      hash: fnv1a('flag{css_data_attrs_are_visible}') },
+    { id:8, name:'nmap_recon',     points:125,
+      brief:"A misconfigured service on this host is leaking secrets via its banner. First find out what host you're on, then scan it. Version strings can talk too much.",
+      hint:"Run `ifconfig` to see the local IP, then `nmap` that exact IP. Look at the version string of the unusual port.",
+      hash: fnv1a('flag{nmap_finds_what_eyes_miss}') }
+  ];
+  // ---- Obfuscated flag #5 (read carefully) ----
+  const _x1 = 'flag{';
+  const _x2 = 'string_';
+  const _x3 = 'concat_';
+  const _x4 = 'is_weak_';
+  const _x5 = 'obfuscation';
+  const _x6 = '}';
+  // (the `motto` var below uses the parts so a smart linter won't flag them as unused)
+  const _motto = _x1 + _x2 + _x3 + _x4 + _x5 + _x6;
+
+  // ---- Console flag drop ----
+  console.log('%c[CTF #2] flag{console_log_is_loud}', 'color:#ffd24f;font-weight:bold;');
+  console.log('%cIf you found this, run `flag console_log_is_loud` in the page terminal.', 'color:#7088a3;');
+
+  const ctfState = {
+    solved: new Set(),     // ids of solved challenges
+    points: 0,
+    activeChallenge: null  // id of last `ctf start`
+  };
+
+  // ---- Persist CTF progress across reloads (localStorage, this browser only) ----
+  const CTF_STORAGE_KEY = 'oit-cybersec-ctf-v1';
+  function saveCtfState() {
+    try {
+      localStorage.setItem(CTF_STORAGE_KEY, JSON.stringify({ solved: Array.from(ctfState.solved) }));
+    } catch (_) { /* private mode / quota — silently ignore */ }
+  }
+  function loadCtfState() {
+    try {
+      const raw = localStorage.getItem(CTF_STORAGE_KEY);
+      if (!raw) return;
+      const data = JSON.parse(raw);
+      if (!Array.isArray(data.solved)) return;
+      ctfState.solved.clear();
+      ctfState.points = 0;
+      data.solved.forEach(id => {
+        const ch = CHALLENGES.find(c => c.id === id);
+        if (ch) { ctfState.solved.add(id); ctfState.points += ch.points; }
+      });
+    } catch (_) { /* corrupt — ignore */ }
+  }
+  loadCtfState();
+
+  function updateScoreUI() {
+    const total = CHALLENGES.length;
+    document.getElementById('score-badge').textContent = `CTF: ${ctfState.solved.size}/${total}`;
+    document.getElementById('status-score').textContent = `CTF ${ctfState.solved.size}/${total} · ${ctfState.points}pts`;
+  }
+  updateScoreUI();
+
+  /* ============================================================
+     PYODIDE LOADER (real Python, on demand)
+     ============================================================ */
+  let pyodide = null;
+  let pyodideLoading = null;
+  async function ensurePyodide(progressFn) {
+    if (pyodide) return pyodide;
+    if (pyodideLoading) return pyodideLoading;
+    pyodideLoading = (async () => {
+      progressFn && progressFn('downloading pyodide runtime (~10MB)... this may take a moment');
+      // Load the loader script
+      await new Promise((res, rej) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js';
+        s.onload = res; s.onerror = () => rej(new Error('failed to load pyodide CDN'));
+        document.head.appendChild(s);
+      });
+      progressFn && progressFn('initializing python interpreter...');
+      pyodide = await window.loadPyodide({
+        indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.26.4/full/'
+      });
+      progressFn && progressFn('python ready.');
+      return pyodide;
+    })().catch(err => { pyodideLoading = null; throw err; });
+    return pyodideLoading;
+  }
+
+  /* ============================================================
+     TERMINAL ENGINE
+     ============================================================ */
+  const term       = document.getElementById('term');
+  const termOutput = document.getElementById('term-output');
+  const termInput  = document.getElementById('term-input');
+  const termPath   = document.getElementById('term-path');
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  function out(html, cls = '') {
+    const div = document.createElement('div');
+    div.className = 'term-line term-out ' + (cls ? 'term-out-' + cls : '');
+    div.innerHTML = html;
+    termOutput.appendChild(div);
+    term.scrollTop = term.scrollHeight;
+  }
+  function blank() { out('&nbsp;'); }
+  function echoCmd(cmd) {
+    const div = document.createElement('div');
+    div.className = 'term-line prompt-line';
+    if (pythonMode) {
+      div.innerHTML = '<span class="term-prompt" style="color:var(--info)">&gt;&gt;&gt;</span>' +
+        '<span class="term-cmd">'+escapeHtml(cmd)+'</span>';
+    } else {
+      div.innerHTML = `<span class="term-prompt">hacker@${CONFIG.clubShort}</span>` +
+        '<span class="term-path">'+termPath.textContent+'</span>' +
+        '<span class="term-dollar">$</span>' +
+        '<span class="term-cmd">'+escapeHtml(cmd)+'</span>';
+    }
+    termOutput.appendChild(div);
+  }
+
+  /* ============================================================
+     PYTHON REPL — interactive mode state, evaluator, prompt switch
+     ============================================================ */
+  let pythonMode = false;
+
+  function updatePromptUI() {
+    const line = document.querySelector('.term-input-line');
+    if (!line) return;
+    const prompt = line.querySelector('.term-prompt');
+    const path   = line.querySelector('.term-path');
+    const dollar = line.querySelector('.term-dollar');
+    if (pythonMode) {
+      prompt.textContent = '>>>';
+      prompt.style.color = 'var(--info)';
+      path.style.display = 'none';
+      dollar.style.display = 'none';
+    } else {
+      prompt.textContent = 'hacker@cybersec';
+      prompt.style.color = '';
+      path.style.display = '';
+      dollar.style.display = '';
+    }
+  }
+
+  // Real-Python-REPL behavior: try eval (expression), fall back to exec (statement).
+  // Captures stdout/stderr and prints repr() of expression results, like a real REPL.
+  async function runPythonLine(line) {
+    try {
+      const py = await ensurePyodide(msg => out('  '+msg, 'dim'));
+      const wrapper = `
+import sys, io, traceback
+_buf = io.StringIO()
+_old_out, _old_err = sys.stdout, sys.stderr
+sys.stdout = _buf
+sys.stderr = _buf
+_repr = None
+try:
+    try:
+        _code = compile(${JSON.stringify(line)}, '<stdin>', 'eval')
+        _r = eval(_code, globals())
+        if _r is not None:
+            _repr = repr(_r)
+    except SyntaxError:
+        _code = compile(${JSON.stringify(line)}, '<stdin>', 'exec')
+        exec(_code, globals())
+except Exception:
+    traceback.print_exc(limit=-1)
+finally:
+    sys.stdout = _old_out
+    sys.stderr = _old_err
+_text = _buf.getvalue()
+if _repr is not None:
+    _text += _repr + '\\n'
+_text
+      `.trim();
+      const text = py.runPython(wrapper);
+      if (text) {
+        text.replace(/\n$/, '').split('\n').forEach(ln => out(escapeHtml(ln)));
+      }
+    } catch (e) {
+      out(escapeHtml(String(e.message || e)), 'err');
+    }
+  }
+
+  /* ============================================================
+     ACTIVITY LOG — driven by terminal commands, tab clicks, links
+     ============================================================ */
+  function addActivity(level, html) {
+    const log = document.getElementById('activity-log');
+    if (!log) return;
+    const tagText = { info:'INFO', ok:' OK ', warn:'WARN', err:' ERR' }[level] || 'INFO';
+    const cssLevel = level === 'err' ? 'warn' : level;  // reuse warn red-ish styling for errors
+    const div = document.createElement('div');
+    div.className = `log-line log-${cssLevel}`;
+    div.innerHTML = `<span class="log-tag">[${tagText}]</span> ${html}`;
+    log.insertBefore(div, log.firstChild);
+    // cap to keep the panel from growing unbounded
+    while (log.children.length > 30) log.removeChild(log.lastChild);
+  }
+
+  /* ============================================================
+     PAGE PRINTERS — render each "page" into the terminal scroll
+     line-by-line, like an old teletype
+     ============================================================ */
+  const LINE_DELAY = 55;  // ms between printed lines
+  let printGen = 0;       // incremented on each new printPage; lets in-flight prints finish fast if the user clicks again
+  function _sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+  async function slow(html, cls = '', myGen = printGen) {
+    out(html, cls);
+    if (myGen !== printGen) return;  // a newer print has started — flush instantly
+    await _sleep(LINE_DELAY);
+  }
+  async function slowBlank(myGen = printGen) {
+    blank();
+    if (myGen !== printGen) return;
+    await _sleep(LINE_DELAY);
+  }
+
+  async function printHome() {
+    const g = printGen;
+    await slow(`<pre class="ascii-art">
+ ██████╗██╗   ██╗██████╗ ███████╗██████╗ ███████╗███████╗ ██████╗
+██╔════╝╚██╗ ██╔╝██╔══██╗██╔════╝██╔══██╗██╔════╝██╔════╝██╔════╝
+██║      ╚████╔╝ ██████╔╝█████╗  ██████╔╝███████╗█████╗  ██║
+██║       ╚██╔╝  ██╔══██╗██╔══╝  ██╔══██╗╚════██║██╔══╝  ██║
+╚██████╗   ██║   ██████╔╝███████╗██║  ██║███████║███████╗╚██████╗
+ ╚═════╝   ╚═╝   ╚═════╝ ╚══════╝╚═╝  ╚═╝╚══════╝╚══════╝ ╚═════╝
+              ${CONFIG.campusName} · Hustlin' Owls
+</pre>`, '', g);
+    await slow(`<span class="term-out-ok">$</span> Welcome to the ${CONFIG.clubName} Terminal v1.0.0`, '', g);
+    await slow(`${CONFIG.campusName} · ${CONFIG.description}`, 'dim', g);
+    await slowBlank(g);
+    await slow('Type <span class="term-out-ok">help</span> for commands. Type <span class="term-out-mag">ctf</span> to start solving challenges.', 'dim', g);
+  }
+
+  async function printAbout() {
+    const g = printGen;
+    await slow('# about.md', 'mag', g);
+    await slowBlank(g);
+    await slow(`The <span class="term-out-ok">${CONFIG.clubName}</span> is a student-run cybersecurity / hacking / CTF club at ${CONFIG.campusName}. We meet ${CONFIG.meetingDay}s at ${CONFIG.meetingTime} in ${CONFIG.meetingRoom} to break things, learn new tools, and prep for CTF competitions.`, '', g);
+    await slowBlank(g);
+    await slow('Areas of focus:', 'dim', g);
+    await slow('  <span class="term-out-ok">▸</span> Network &amp; web exploitation (nmap, Burp, sqlmap, Metasploit)', '', g);
+    await slow('  <span class="term-out-ok">▸</span> Hardware &amp; wireless security (Pwnagotchi, Flipper, Bash Bunny, Alfa cards)', '', g);
+    await slow('  <span class="term-out-ok">▸</span> Reverse engineering &amp; binary exploitation (Ghidra, pwntools, ROP)', '', g);
+    await slow('  <span class="term-out-ok">▸</span> Defensive ops &amp; SIEM (Splunk, Wazuh, network forensics)', '', g);
+    await slow('  <span class="term-out-ok">▸</span> CTF preparation — internal practice + external competitions', '', g);
+    await slowBlank(g);
+    await slow('Membership is free. No prior experience required. Bring a laptop. Curiosity is mandatory.', '', g);
+  }
+
+  /* ============================================================
+     UPCOMING-MEETING HELPERS — past Thursdays auto-disappear
+     ============================================================ */
+  const MONTHS_SHORT = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+  const MONTHS_NICE  = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const DAY_NUMS = { Sunday:0, Monday:1, Tuesday:2, Wednesday:3, Thursday:4, Friday:5, Saturday:6 };
+  function upcomingThursdays(count) {
+    const out = [];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const target = DAY_NUMS[CONFIG.meetingDay] ?? 4;
+    const daysUntil = (target - today.getDay() + 7) % 7;
+    const first = new Date(today);
+    first.setDate(today.getDate() + daysUntil);
+    for (let i = 0; i < count; i++) {
+      const d = new Date(first);
+      d.setDate(first.getDate() + i * 7);
+      out.push(d);
+    }
+    return out;
+  }
+  const _DAY_ABBR = (n) => ['SUN','MON','TUE','WED','THU','FRI','SAT'][n];
+  const _Day      = (n) => ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][n];
+  function fmtEventCard(d) { return `${_DAY_ABBR(d.getDay())} ${MONTHS_SHORT[d.getMonth()]} ${String(d.getDate()).padStart(2)}`; }
+  function fmtNextMeeting(d) { return `${_Day(d.getDay())} ${MONTHS_NICE[d.getMonth()]} ${d.getDate()} · ${CONFIG.meetingTime}`; }
+
+  async function printEvents() {
+    const g = printGen;
+    await slow(`# events.json — every ${CONFIG.meetingDay} at ${CONFIG.meetingTime}, ${CONFIG.meetingRoom}`, 'mag', g);
+    await slowBlank(g);
+    for (const d of upcomingThursdays(5)) {
+      await slow(`  <span class="term-out-warn">${fmtEventCard(d)}</span>  <span class="term-out-info">Weekly meeting</span>  <span class="term-out-dim">· ${CONFIG.meetingTime} · ${CONFIG.meetingRoom}</span>`, '', g);
+    }
+  }
+
+  async function printContact() {
+    const g = printGen;
+    await slow('# contact.sh', 'mag', g);
+    await slowBlank(g);
+    await slow('Reach out — for joining, questions, or anything else.', '', g);
+    await slowBlank(g);
+    await slow(`  <span class="term-out-dim">sign up    :</span> <a href="${CONFIG.links.signup}" target="_blank">${_u(CONFIG.links.signup)}</a>`, '', g);
+    await slow(`  <span class="term-out-dim">the roost  :</span> <a href="${CONFIG.links.roost}" target="_blank">club page</a>`, '', g);
+    await slow(`  <span class="term-out-dim">discord    :</span> <a href="${CONFIG.links.discord}" target="_blank">${_u(CONFIG.links.discord)}</a>`, '', g);
+    await slow(`  <span class="term-out-dim">advisor    :</span> ${CONFIG.advisor.name}`, '', g);
+    await slowBlank(g);
+    await slow('# officers.list', 'mag', g);
+    const padW = Math.max(...CONFIG.officers.map(o => o.role.length));
+    for (const o of CONFIG.officers) {
+      await slow(`  <span class="term-out-dim">${o.role.toLowerCase().padEnd(padW)}:</span> ${o.name}`, '', g);
+    }
+  }
+
+  async function printCtf() {
+    const g = printGen;
+    await slow('# ctf.md', 'mag', g);
+    await slowBlank(g);
+    await slow('Welcome to the warm-up CTF. <span class="term-out-mag">8 challenges</span> hidden across this site. All client-side, all solvable from the terminal.', '', g);
+    await slowBlank(g);
+    await slow('Run <span class="term-out-ok">ctf list</span> to see them, then <span class="term-out-ok">ctf start &lt;n&gt;</span> for any challenge. Submit with <span class="term-out-ok">flag &lt;text&gt;</span>.', 'dim', g);
+    await slowBlank(g);
+    await slow('  <span class="term-out-mag">▸</span> recon — DevTools is your friend', '', g);
+    await slow('  <span class="term-out-mag">▸</span> console — JS execution leaves traces', '', g);
+    await slow('  <span class="term-out-mag">▸</span> base64 — encoding ≠ encryption', '', g);
+    await slow('  <span class="term-out-mag">▸</span> rot13 — substitution cipher classic', '', g);
+    await slow('  <span class="term-out-mag">▸</span> obfuscation — read the JavaScript carefully', '', g);
+    await slow('  <span class="term-out-mag">▸</span> xor — needs real Python (try the <span class="term-out-ok">python</span> command)', '', g);
+    await slow('  <span class="term-out-mag">▸</span> steganography — sometimes data hides in plain sight', '', g);
+    await slow('  <span class="term-out-mag">▸</span> nmap_recon — services talk too much (try the <span class="term-out-ok">nmap</span> command)', '', g);
+    await slowBlank(g);
+    await slow('Type <span class="term-out-ok">hint &lt;n&gt;</span> if stuck. Type <span class="term-out-ok">score</span> for progress. Run <span class="term-out-ok">ctf reset</span> to wipe saved state.', 'dim', g);
+    await slow('Progress is saved in this browser via localStorage — survives reloads, but not incognito or other browsers.', 'dim', g);
+  }
+
+  async function printPage(name) {
+    printGen++;  // any in-flight print sees a stale gen and flushes instantly
+    const printers = { home: printHome, about: printAbout, events: printEvents, contact: printContact, ctf: printCtf };
+    const fn = printers[name];
+    if (!fn) return;
+    // Scroll to bottom first so the typewriter effect happens in view
+    term.scrollTop = term.scrollHeight;
+    await fn();
+  }
+
+  /* ============================================================
+     COMMANDS
+     ============================================================ */
+  const COMMANDS = {
+    help: { desc:'List commands. Run `help <name>` for details on one.', run: (a) => {
+      const target = (a[0] || '').toLowerCase();
+      // ---- Detail view for a specific command ----
+      if (target) {
+        const cmd = COMMANDS[target];
+        if (!cmd) {
+          out(`no help: "${escapeHtml(target)}" is not a command. Try \`help\` for the list.`, 'err');
+          return;
+        }
+        out(`<span class="term-out-warn">━━ ${target} ━━</span>`);
+        out(cmd.desc);
+        if (cmd.usage) {
+          blank();
+          out('<span class="term-out-warn">USAGE</span>');
+          out('  ' + cmd.usage);
+        }
+        if (cmd.examples && cmd.examples.length) {
+          blank();
+          out('<span class="term-out-warn">EXAMPLES</span>');
+          cmd.examples.forEach(e => out('  <span class="term-out-info">' + e + '</span>'));
+        }
+        if (cmd.notes) {
+          blank();
+          out('<span class="term-out-warn">NOTES</span>');
+          cmd.notes.split('\n').forEach(l => out('  ' + l, 'dim'));
+        }
+        return;
+      }
+      // ---- Full categorized list ----
+      const cats = {
+        'Pages':     ['home','about','events','contact','ctf'],
+        'Network':   ['nmap','ping','dig','whois','traceroute','ifconfig','netstat','curl','ssh'],
+        'Filesystem':['ls','cat','tree','df','pwd'],
+        'System':    ['whoami','uname','date','uptime','history','echo','neofetch'],
+        'Tools':     ['base64','rot13','hash','python','py','fortune','cowsay','banner'],
+        'Club':      ['join','roster','next','discord','roost','signup'],
+        'CTF':       ['ctf','flag','hint','score'],
+        'Misc':      ['matrix','sudo','vim','emacs','rm','clear','exit','help','h'],
+      };
+      const seen = new Set();
+      Object.entries(cats).forEach(([cat, cmds]) => {
+        out(`<span class="term-out-warn">── ${cat} ──</span>`);
+        cmds.forEach(n => {
+          if (COMMANDS[n] && !seen.has(n)) {
+            seen.add(n);
+            out(`  <span class="term-out-info">${n.padEnd(12)}</span><span class="term-out-dim">${COMMANDS[n].desc}</span>`);
+          }
+        });
+        blank();
+      });
+      // surface anything not categorized
+      const missing = Object.keys(COMMANDS).filter(n => !seen.has(n));
+      if (missing.length) {
+        out(`<span class="term-out-warn">── Other ──</span>`);
+        missing.forEach(n => out(`  <span class="term-out-info">${n.padEnd(12)}</span><span class="term-out-dim">${COMMANDS[n].desc}</span>`));
+        blank();
+      }
+      out('Run <span class="term-out-info">help &lt;name&gt;</span> for usage + examples on any command.', 'dim');
+      out('Tips: ↑/↓ history · Tab complete · Ctrl+L clear · Ctrl+C abort', 'dim');
+    }},
+
+    about:   { desc:'Show the about page',    run: () => switchTab('about') },
+    events:  { desc:'Show upcoming events',   run: () => switchTab('events') },
+    contact: { desc:'Show contact info',      run: () => switchTab('contact') },
+    home:    { desc:'Go to the home page',    run: () => switchTab('home') },
+
+    join:    { desc:'How to join the club', run: () => {
+      out('Three steps to join:', 'ok');
+      out(`  1. Sign up on The Roost: <a href="${CONFIG.links.signup}" target="_blank">${_u(CONFIG.links.signup)}</a>`);
+      out(`  2. Show up to a meeting (see <span class="term-out-info">events</span>) — ${CONFIG.meetingDay}s at ${CONFIG.meetingTime}`);
+      out(`  3. Hop in our Discord: <a href="${CONFIG.links.discord}" target="_blank">${_u(CONFIG.links.discord)}</a>`);
+      blank();
+      out('No experience required.', 'dim');
+    }},
+
+    ls: { desc:'List "files" in this directory', run: () => {
+      out('<span class="term-out-info">about.md</span>      <span class="term-out-info">events.json</span>     <span class="term-out-info">contact.sh</span>');
+      out('<span class="term-out-info">ctf.md</span>        <span class="term-out-info">officers.list</span>   <span class="term-out-info">README</span>');
+    }},
+
+    cat: { desc:'Show contents of a "file"', run: (a) => {
+      const f = (a[0]||'').toLowerCase();
+      const fs = {
+        'readme':()=>switchTab('home'), 'about.md':()=>switchTab('about'),
+        'events.json':()=>switchTab('events'), 'contact.sh':()=>switchTab('contact'),
+        'ctf.md':()=>switchTab('ctf'),
+        'motto.txt':()=>out('"hack the planet — responsibly."', 'mag'),
+        'officers.list':()=>switchTab('contact')
+      };
+      if (!f) return out('usage: cat <file>   (try: cat README)', 'err');
+      if (fs[f]) return fs[f]();
+      out('cat: '+escapeHtml(f)+': No such file or directory', 'err');
+    }},
+
+    whoami: { desc:'Print current user',     run: () => out('hacker', 'ok') },
+    pwd:    { desc:'Print working directory', run: () => out('/home/hacker'+termPath.textContent.replace('~',''), 'ok') },
+    date:   { desc:'Show current date',       run: () => out(new Date().toString(), 'ok') },
+    uname:  { desc:'Print system info',       run: () => out('Linux club-host 6.9.0-club #1 SMP x86_64 GNU/Linux', 'ok') },
+    echo:   { desc:'Echo arguments',          run: (a) => out(escapeHtml(a.join(' '))) },
+
+    sudo:   { desc:'Become root (you wish)',  run: () => {
+      out('[sudo] password for hacker:', 'dim');
+      setTimeout(() => out('Sorry, user hacker is not in the sudoers file. This incident will be reported.', 'err'), 600);
+    }},
+
+    matrix: { desc:'Wake up, Neo...', run: () => {
+      const c = '01アイウエオカキクケコｱｲｳｴｵｶｷｸｹｺ';
+      for (let i = 0; i < 6; i++) {
+        let line = '';
+        for (let j = 0; j < 60; j++) line += c[Math.floor(Math.random()*c.length)];
+        out('<span class="term-out-ok">'+line+'</span>');
+      }
+    }},
+
+    clear:  { desc:'Clear the terminal',     run: () => { termOutput.innerHTML=''; }},
+    exit:   { desc:'Exit (just kidding)',    run: () => out("nope, you're stuck here. try 'help'", 'warn') },
+
+    /* ============================================================
+       CTF COMMANDS
+       ============================================================ */
+    ctf: { desc:'CTF challenge mode',
+      usage: 'ctf [list|start <n>|reset]',
+      examples: ['ctf list', 'ctf start 3', 'ctf reset'],
+      notes: 'Progress saves to localStorage so it survives reloads.',
+      run: (a) => {
+      const sub = (a[0] || 'list').toLowerCase();
+      if (sub === 'list' || sub === 'ls') {
+        out('CTF CHALLENGES', 'mag');
+        out('──────────────', 'dim');
+        CHALLENGES.forEach(ch => {
+          const mark = ctfState.solved.has(ch.id) ? '<span class="term-out-ok">[✓]</span>' : '<span class="term-out-dim">[ ]</span>';
+          out(`${mark}  <span class="term-out-info">#${ch.id}</span> <span style="color:var(--magenta)">${ch.name.padEnd(16)}</span><span class="term-out-dim">${ch.points}pts</span>`);
+        });
+        blank();
+        out(`Total: ${ctfState.solved.size}/${CHALLENGES.length} solved · ${ctfState.points} points`, 'mag');
+        out('Run `ctf start <n>` for details. Submit with `flag <text>`.', 'dim');
+        return;
+      }
+      if (sub === 'start' || sub === 'open') {
+        const n = parseInt(a[1], 10);
+        const ch = CHALLENGES.find(c => c.id === n);
+        if (!ch) return out('usage: ctf start <number>   (1-'+CHALLENGES.length+')', 'err');
+        ctfState.activeChallenge = ch.id;
+        out(`── Challenge #${ch.id}: ${ch.name} (${ch.points}pts) ──`, 'mag');
+        out(ch.brief);
+        blank();
+        out(`Submit with: flag &lt;value&gt;   (the flag{} wrapper is optional)`, 'dim');
+        out(`Stuck? hint ${ch.id}`, 'dim');
+        return;
+      }
+      if (sub === 'reset') {
+        ctfState.solved.clear();
+        ctfState.points = 0;
+        ctfState.activeChallenge = null;
+        saveCtfState();
+        updateScoreUI();
+        out('CTF progress cleared.', 'warn');
+        return;
+      }
+      out('usage: ctf list  |  ctf start <n>  |  ctf reset', 'err');
+    }},
+
+    flag: { desc:'Submit a CTF flag (the surrounding flag{} is optional)',
+      usage: 'flag <value>',
+      examples: ['flag flag{example}', 'flag {example}', 'flag example', 'flag{example}'],
+      notes: 'All four formats above are equivalent. The leading `flag` command is even optional — typing `flag{...}` or `{...}` on its own works too.',
+      run: (a) => {
+      let submission = a.join(' ').trim();
+      if (!submission) return out('usage: flag <value>   (you can include flag{...} or just the inside)', 'err');
+      // Normalize: accept "flag{x}", "{x}", or bare "x" — wrap into flag{x}
+      if (!/^flag\{.*\}$/i.test(submission)) {
+        if (/^\{.*\}$/.test(submission)) submission = submission.slice(1, -1);
+        submission = `flag{${submission}}`;
+      }
+      const h = fnv1a(submission);
+      const match = CHALLENGES.find(c => c.hash === h);
+      if (!match) {
+        out('✗ incorrect flag', 'err');
+        return;
+      }
+      if (ctfState.solved.has(match.id)) {
+        out(`✓ already solved: #${match.id} ${match.name}`, 'warn');
+        return;
+      }
+      ctfState.solved.add(match.id);
+      ctfState.points += match.points;
+      saveCtfState();
+      addActivity('ok', `flag captured: <span class="term-out-mag">#${match.id} ${match.name}</span> +${match.points}pts`);
+      out(`✓ CORRECT! Challenge #${match.id} (${match.name}) — +${match.points}pts`, 'ok');
+      updateScoreUI();
+      if (ctfState.solved.size === CHALLENGES.length) {
+        blank();
+        out('  ╔══════════════════════════════════════════╗', 'mag');
+        out('  ║  ALL CHALLENGES SOLVED — nice work, hacker. ║', 'mag');
+        out('  ╚══════════════════════════════════════════╝', 'mag');
+      }
+    }},
+
+    score: { desc:'Show CTF progress', run: () => {
+      out(`${ctfState.solved.size}/${CHALLENGES.length} challenges solved · ${ctfState.points} points`, 'mag');
+      CHALLENGES.forEach(ch => {
+        const m = ctfState.solved.has(ch.id) ? '<span class="term-out-ok">[✓]</span>' : '<span class="term-out-dim">[ ]</span>';
+        out(`  ${m} #${ch.id} ${ch.name}`);
+      });
+    }},
+
+    hint: { desc:'Show a CTF challenge hint',
+      usage: 'hint [n|name]',
+      examples: ['hint 3', 'hint base64', 'hint nmap_recon', 'hint'],
+      notes: 'With no argument, shows the hint for the currently active challenge (the last `ctf start <n>`).',
+      run: (a) => {
+      const arg = (a[0] || '').toLowerCase();
+      let ch = null;
+      if (arg) {
+        const n = parseInt(arg, 10);
+        if (!isNaN(n)) ch = CHALLENGES.find(c => c.id === n);
+        else ch = CHALLENGES.find(c => c.name.toLowerCase() === arg);
+      } else if (ctfState.activeChallenge) {
+        ch = CHALLENGES.find(c => c.id === ctfState.activeChallenge);
+      }
+      if (!ch) {
+        out('No challenge matched. Run `ctf start <n>` first, or use `hint <n>` / `hint <name>`.', 'err');
+        out('Available challenges:', 'dim');
+        CHALLENGES.forEach(c => out(`  <span class="term-out-info">#${c.id}</span> <span class="term-out-mag">${c.name}</span>`));
+        return;
+      }
+      out(`hint #${ch.id} (${ch.name}):`, 'warn');
+      out('  '+ch.hint);
+    }},
+
+    /* ============================================================
+       PYTHON — real Python via Pyodide (loads on first use)
+       Type `python` with no args to enter interactive REPL mode.
+       ============================================================ */
+    python: { desc:'Real Python REPL — `python` for interactive mode, or `python <expr>` for one-shot',
+      usage: 'python [expression]',
+      examples: ['python', 'python 2 + 2', "python import base64; print(base64.b64decode('aGk=').decode())", 'python [x*x for x in range(5)]'],
+      notes: 'No args drops you into an interactive >>> REPL. Type exit() or Ctrl+C to leave.\nFirst use downloads ~10MB Pyodide WASM (cached after).',
+      run: async (a) => {
+      const expr = a.join(' ').trim();
+      try {
+        await ensurePyodide(msg => out('  '+msg, 'dim'));
+        if (!expr) {
+          // Enter interactive REPL mode
+          pythonMode = true;
+          updatePromptUI();
+          out('Python 3.11 (Pyodide on WebAssembly)', 'ok');
+          out('Type any Python — every line is sent to the interpreter.', 'dim');
+          out('Use <span class="term-out-info">exit()</span> or <span class="term-out-info">quit()</span> to return to bash.', 'dim');
+          addActivity('ok', 'entered <span class="term-out-info">python REPL</span>');
+          return;
+        }
+        // One-shot: run via the same evaluator as REPL mode
+        await runPythonLine(expr);
+      } catch (err) {
+        out(escapeHtml(String(err.message || err)), 'err');
+      }
+    }},
+
+    py: { desc:'Alias for python', run: (a) => COMMANDS.python.run(a) },
+
+    /* ============================================================
+       NETWORK / SECURITY (all simulated — no real packets leave the page)
+       ============================================================ */
+    nmap: { desc:'Port-scan a host (simulated)',
+      usage: 'nmap <host>',
+      examples: ['nmap localhost', 'nmap oit.edu', 'nmap 10.50.0.1'],
+      notes: 'Output is simulated — no packets actually leave your browser.\nScanning the local IP turns up something interesting (CTF #8).',
+      run: async (a) => {
+      const target = a[0] || 'localhost';
+      const safeT = escapeHtml(target);
+      const ts = new Date().toISOString().slice(0,19).replace('T',' ');
+      out(`Starting Nmap 7.94 ( https://nmap.org ) at ${ts}`, 'dim');
+      await new Promise(r => setTimeout(r, 250));
+      out(`Nmap scan report for <span class="term-out-info">${safeT}</span>`);
+      out(`Host is up (0.0023s latency).`, 'dim');
+      blank();
+      out(`PORT      STATE     SERVICE         VERSION`, 'warn');
+      const ports = [
+        ['22/tcp',   'open',     'ssh',          'OpenSSH 9.3'],
+        ['80/tcp',   'open',     'http',         'nginx 1.24.0'],
+        ['443/tcp',  'open',     'https',        'nginx 1.24.0 (TLS 1.3)'],
+        ['3306/tcp', 'filtered', 'mysql',        '?'],
+        ['8080/tcp', 'closed',   'http-proxy',   '?'],
+        ['9000/tcp', 'open',     'cslistener',   'unknown'],
+      ];
+      for (const [port, state, svc, ver] of ports) {
+        await new Promise(r => setTimeout(r, 220));
+        const cls = state === 'open' ? 'ok' : state === 'filtered' ? 'warn' : 'dim';
+        out(`${port.padEnd(10)}<span class="term-out-${cls}">${state.padEnd(10)}</span>${svc.padEnd(16)}${ver}`);
+      }
+      // CTF #8: leak a flag in a service banner when the target is the local host (10.50.0.1)
+      if (target === '10.50.0.1' || target === 'localhost' || target === '127.0.0.1') {
+        await new Promise(r => setTimeout(r, 280));
+        out(`1337/tcp  <span class="term-out-ok">open</span>      ctf-banner      <span class="term-out-mag">Banner: flag{nmap_finds_what_eyes_miss}</span>`);
+        out(`|_ctf-banner: service is leaking debug data — submit the banner with \`flag &lt;text&gt;\``, 'dim');
+      }
+      blank();
+      out(`Nmap done: 1 IP address (1 host up) scanned in 1.87 seconds`, 'dim');
+    }},
+
+    ping: { desc:'Send ICMP echo requests (simulated)',
+      usage: 'ping <host>',
+      examples: ['ping localhost', 'ping oit.edu'],
+      run: async (a) => {
+      const t = escapeHtml(a[0] || 'localhost');
+      out(`PING ${t} (10.50.0.1) 56(84) bytes of data.`);
+      let received = 0;
+      for (let i = 0; i < 4; i++) {
+        await new Promise(r => setTimeout(r, 350));
+        const time = (Math.random() * 5 + 0.4).toFixed(2);
+        out(`64 bytes from ${t}: icmp_seq=${i+1} ttl=64 time=${time} ms`);
+        received++;
+      }
+      blank();
+      out(`--- ${t} ping statistics ---`);
+      out(`4 packets transmitted, ${received} received, 0% packet loss, time 1612ms`);
+    }},
+
+    dig: { desc:'DNS lookup (simulated)',
+      usage: 'dig <domain>',
+      examples: ['dig oit.edu', 'dig example.com'],
+      run: (a) => {
+      const t = escapeHtml(a[0] || 'oit.edu');
+      out(`; <<>> DiG 9.18 <<>> ${t}`, 'dim');
+      blank();
+      out(`;; ANSWER SECTION:`, 'warn');
+      out(`${t}.\t300\tIN\tA\t199.46.115.21`);
+      out(`${t}.\t300\tIN\tAAAA\t2607:f8b0:400a::200e`);
+      blank();
+      out(`;; Query time: 23 msec`, 'dim');
+      out(`;; SERVER: 1.1.1.1#53(1.1.1.1)`, 'dim');
+    }},
+
+    whois: { desc:'Domain registration lookup (simulated)', run: (a) => {
+      const t = (a[0] || 'oit.edu').toUpperCase();
+      out(`Domain Name: ${escapeHtml(t)}`);
+      out(`Registry: EDUCAUSE`);
+      out(`Registrant: Oregon Institute of Technology`);
+      out(`Registration Date: 1989-04-11`);
+      out(`Status: clientTransferProhibited`);
+      out(`Name Servers: NS1.OIT.EDU, NS2.OIT.EDU`);
+    }},
+
+    traceroute: { desc:'Trace route to a host (simulated)',
+      usage: 'traceroute <host>',
+      examples: ['traceroute oit.edu', 'traceroute google.com'],
+      run: async (a) => {
+      const t = escapeHtml(a[0] || 'oit.edu');
+      out(`traceroute to ${t} (199.46.115.21), 30 hops max, 60 byte packets`);
+      const hops = [
+        ['10.50.0.1',     '0.5'],
+        ['192.168.1.1',   '1.2'],
+        ['10.0.0.1',      '8.4'],
+        ['72.14.207.115', '15.7'],
+        ['108.170.252.1', '22.3'],
+        ['199.46.115.21', '24.1'],
+      ];
+      for (let i = 0; i < hops.length; i++) {
+        await new Promise(r => setTimeout(r, 220));
+        out(` ${(i+1).toString().padStart(2)}  ${hops[i][0].padEnd(20)}  ${hops[i][1]} ms`);
+      }
+    }},
+
+    ifconfig: { desc:'Network interface configuration', run: () => {
+      out(`eth0: flags=4163&lt;UP,BROADCAST,RUNNING,MULTICAST&gt;  mtu 1500`, 'info');
+      out(`        inet 10.50.0.1  netmask 255.255.255.0  broadcast 10.50.0.255`);
+      out(`        ether de:ad:be:ef:00:01  txqueuelen 1000  (Ethernet)`);
+      out(`        RX packets 1337420  bytes 542109184 (542.1 MB)`);
+      out(`        TX packets 998877   bytes 184273920 (184.2 MB)`);
+      blank();
+      out(`lo:   flags=73&lt;UP,LOOPBACK,RUNNING&gt;  mtu 65536`, 'info');
+      out(`        inet 127.0.0.1  netmask 255.0.0.0`);
+    }},
+
+    netstat: { desc:'Listening ports + active connections (simulated)', run: () => {
+      out(`Active Internet connections (servers and established)`, 'warn');
+      out(`Proto Recv-Q Send-Q  Local Address         Foreign Address       State`);
+      const rows = [
+        ['tcp',  '0',  '0',  '0.0.0.0:22',         '0.0.0.0:*',           'LISTEN'],
+        ['tcp',  '0',  '0',  '0.0.0.0:80',         '0.0.0.0:*',           'LISTEN'],
+        ['tcp',  '0',  '0',  '0.0.0.0:443',        '0.0.0.0:*',           'LISTEN'],
+        ['tcp',  '0',  '0',  '127.0.0.1:5432',     '0.0.0.0:*',           'LISTEN'],
+        ['tcp',  '0',  '0',  '10.50.0.1:443',      '142.250.80.78:443',   'ESTABLISHED'],
+      ];
+      rows.forEach(r => out(`${r[0].padEnd(6)}${r[1].padEnd(7)}${r[2].padEnd(7)} ${r[3].padEnd(22)}${r[4].padEnd(22)}${r[5]}`));
+    }},
+
+    curl: { desc:'Make an HTTP request (simulated)',
+      usage: 'curl <url>',
+      examples: ['curl https://oit.edu', 'curl http://localhost'],
+      run: (a) => {
+      if (!a[0]) return out('usage: curl &lt;url&gt;', 'err');
+      const url = escapeHtml(a[0]);
+      out(`* Trying ${url}...`, 'dim');
+      out(`&gt; GET / HTTP/2`, 'info');
+      out(`&gt; User-Agent: curl/8.0`, 'dim');
+      blank();
+      out(`&lt; HTTP/2 200`, 'ok');
+      out(`&lt; server: nginx`, 'dim');
+      out(`&lt; content-type: text/html`, 'dim');
+      blank();
+      out(`&lt;!doctype html&gt;&lt;title&gt;Hello from ${url}&lt;/title&gt;`);
+    }},
+
+    ssh: { desc:'Connect to a remote host', run: (a) => {
+      const t = escapeHtml(a[0] || 'localhost');
+      out(`Permission denied (publickey).`, 'err');
+      out(`ssh: connect to host ${t} port 22: Authentication failure`, 'dim');
+    }},
+
+    /* ============================================================
+       UTILITIES
+       ============================================================ */
+    history: { desc:'Show recent command history', run: () => {
+      if (!history.length) return out('(no history yet)', 'dim');
+      history.slice().reverse().forEach((h, i) => {
+        out(`  ${(i+1).toString().padStart(3)}  ${escapeHtml(h)}`);
+      });
+    }},
+
+    tree: { desc:'Show directory tree', run: () => {
+      out('<span class="term-out-info">~/cybersec/</span>');
+      out('├── <span class="term-out-info">about.md</span>');
+      out('├── <span class="term-out-info">events.json</span>');
+      out('├── <span class="term-out-info">contact.sh</span>');
+      out('├── <span class="term-out-info">officers.list</span>');
+      out('├── <span class="term-out-mag">ctf.md</span>');
+      out('├── motto.txt');
+      out('└── <span class="term-out-info">README</span>');
+      blank();
+      out('1 directory, 7 files', 'dim');
+    }},
+
+    df: { desc:'Disk usage', run: () => {
+      out('Filesystem      Size  Used  Avail  Use%  Mounted on', 'warn');
+      out('/dev/sda1       200G  134G   66G   67%  /');
+      out('/dev/sda2        50G   12G   38G   24%  /home');
+      out('tmpfs            16G  4.2G   12G   27%  /tmp');
+    }},
+
+    uptime: { desc:'Show how long the session has been up', run: () => {
+      const e = Math.floor((Date.now()-start)/1000);
+      const h = Math.floor(e/3600), m = Math.floor((e%3600)/60), s = e%60;
+      out(`up ${h}h ${m}m ${s}s, 1 user, load average: 0.42, 0.31, 0.27`);
+    }},
+
+    /* ============================================================
+       TOOLS
+       ============================================================ */
+    base64: { desc:'Encode or decode base64',
+      usage: 'base64 (encode|decode) <text>',
+      examples: ['base64 encode hello', 'base64 decode aGVsbG8=', 'base64 decode ZmxhZ3tiNjRfaXNfbm90X2VuY3J5cHRpb259'],
+      notes: 'Real encoding via the browser btoa/atob — no fake output.',
+      run: (a) => {
+      const mode = (a[0]||'').toLowerCase();
+      const input = a.slice(1).join(' ');
+      if (!mode || !input) return out('usage: base64 encode &lt;text&gt;  |  base64 decode &lt;text&gt;', 'err');
+      try {
+        const result = mode === 'encode' ? btoa(input) : mode === 'decode' ? atob(input) : null;
+        if (result === null) return out('mode must be "encode" or "decode"', 'err');
+        out(escapeHtml(result), 'ok');
+      } catch (e) {
+        out('error: '+escapeHtml(e.message), 'err');
+      }
+    }},
+
+    rot13: { desc:'Apply ROT13 to text',
+      usage: 'rot13 <text>',
+      examples: ['rot13 hello world', 'rot13 synt{ebgngr_guvegrra_cynprf}'],
+      notes: 'ROT13 is its own inverse — encrypting twice gives you the original back.',
+      run: (a) => {
+      const input = a.join(' ');
+      if (!input) return out('usage: rot13 &lt;text&gt;', 'err');
+      const r = input.replace(/[a-zA-Z]/g, c => {
+        const base = c <= 'Z' ? 65 : 97;
+        return String.fromCharCode((c.charCodeAt(0) - base + 13) % 26 + base);
+      });
+      out(escapeHtml(r), 'ok');
+    }},
+
+    hash: { desc:'SHA-256 hash a string',
+      usage: 'hash <text>',
+      examples: ['hash hunter2', 'hash flag{example}'],
+      notes: 'Real SHA-256 via the browser SubtleCrypto API. Requires HTTPS in production.',
+      run: async (a) => {
+      const input = a.join(' ');
+      if (!input) return out('usage: hash &lt;text&gt;', 'err');
+      const buf = new TextEncoder().encode(input);
+      const h = await crypto.subtle.digest('SHA-256', buf);
+      const hex = Array.from(new Uint8Array(h)).map(b => b.toString(16).padStart(2,'0')).join('');
+      out(`<span class="term-out-info">SHA-256:</span> ${hex}`);
+    }},
+
+    fortune: { desc:'Print a random hacker fortune', run: () => {
+      const quotes = [
+        "Talk is cheap. Show me the code. — Linus Torvalds",
+        "Hack the planet. — Hackers (1995)",
+        "The quieter you become, the more you can hear. — Kali Linux",
+        "Security is a process, not a product. — Bruce Schneier",
+        "There is no patch for human stupidity. — Kevin Mitnick",
+        "If debugging is the process of removing software bugs, then programming must be the process of putting them in. — Edsger Dijkstra",
+        "It's not a bug, it's an undocumented feature.",
+        "The best way to predict the future is to implement it. — David Heinemeier Hansson",
+        "Code never lies, comments sometimes do. — Ron Jeffries",
+        "Trust no one. Verify everything.",
+        "Given enough eyeballs, all bugs are shallow. — Linus's Law",
+      ];
+      out(quotes[Math.floor(Math.random()*quotes.length)], 'mag');
+    }},
+
+    cowsay: { desc:'ASCII cow says something',
+      usage: 'cowsay [message]',
+      examples: ['cowsay hello', 'cowsay hack the planet'],
+      run: (a) => {
+      const msg = a.join(' ') || 'hack the planet';
+      const safeMsg = escapeHtml(msg);
+      const top = ' ' + '_'.repeat(msg.length + 2);
+      const bot = ' ' + '-'.repeat(msg.length + 2);
+      out(`<pre style="margin:0;font-family:inherit;color:var(--accent)">${top}
+&lt; ${safeMsg} &gt;
+${bot}
+        \\   ^__^
+         \\  (oo)\\_______
+            (__)\\       )\\/\\
+                ||----w |
+                ||     ||</pre>`);
+    }},
+
+    banner: { desc:'Reprint the CYBERSEC banner', run: () => printPage('home') },
+
+    neofetch: { desc:'System info, fancied up', run: () => {
+      const e = Math.floor((Date.now()-start)/1000);
+      const h = Math.floor(e/3600), m = Math.floor((e%3600)/60);
+      const ua = navigator.userAgent.split(' ').slice(-1)[0];
+      out(`<pre style="margin:0;font-family:inherit"><span class="term-out-ok">     .--.</span>          <span class="term-out-ok">hacker</span>@<span class="term-out-info">cybersec</span>
+<span class="term-out-ok">    |o_o |</span>         ----------------------------
+<span class="term-out-ok">    |:_/ |</span>         <span class="term-out-warn">OS:</span>       Linux club-host 6.9.0-club
+<span class="term-out-ok">   //   \\ \\</span>        <span class="term-out-warn">Host:</span>     OIT Cybersecurity Club Portland
+<span class="term-out-ok">  (|     | )</span>       <span class="term-out-warn">Kernel:</span>   6.9.0-club
+<span class="term-out-ok"> /'\\_   _/\`\\</span>      <span class="term-out-warn">Uptime:</span>   ${h}h ${m}m
+<span class="term-out-ok"> \\___)=(___/</span>      <span class="term-out-warn">Shell:</span>    bash 5.2
+                       <span class="term-out-warn">Browser:</span>  ${escapeHtml(ua)}
+                       <span class="term-out-warn">Theme:</span>    Hustlin' Owls (navy/gold)</pre>`);
+    }},
+
+    /* ============================================================
+       CLUB SHORTCUTS
+       ============================================================ */
+    roster: { desc:'List club officers', run: () => {
+      out(`Club Officers — ${new Date().getFullYear()}`, 'mag');
+      const padW = Math.max(...CONFIG.officers.map(o => o.role.length), 'Advisor'.length) + 2;
+      CONFIG.officers.forEach(o => {
+        out(`  <span class="term-out-info">${o.role.padEnd(padW)}</span> ${o.name}`);
+      });
+      out(`  <span class="term-out-info">${'Advisor'.padEnd(padW)}</span> ${CONFIG.advisor.name}`);
+    }},
+
+    next: { desc:'Show date/time of next meeting', run: () => {
+      const d = upcomingThursdays(1)[0];
+      out(`Next meeting: <span class="term-out-warn">${fmtNextMeeting(d)}</span> · <span class="term-out-info">${CONFIG.meetingRoom}</span>`);
+    }},
+
+    discord: { desc:'Open Discord invite', run: () => {
+      out(`Opening Discord... <a href="${CONFIG.links.discord}" target="_blank">${_u(CONFIG.links.discord)}</a>`);
+      window.open(CONFIG.links.discord, '_blank');
+    }},
+
+    roost: { desc:'Open The Roost club page', run: () => {
+      out(`Opening The Roost... <a href="${CONFIG.links.roost}" target="_blank">${_u(CONFIG.links.roost).split('?')[0]}</a>`);
+      window.open(CONFIG.links.roost, '_blank');
+    }},
+
+    signup: { desc:'Open the club signup page', run: () => {
+      out(`Opening signup... <a href="${CONFIG.links.signup}" target="_blank">${_u(CONFIG.links.signup)}</a>`);
+      window.open(CONFIG.links.signup, '_blank');
+    }},
+
+    /* ============================================================
+       EASTER EGGS
+       ============================================================ */
+    vim: { desc:'Open the editor', run: () => {
+      out('vim: terminal too small for vim', 'err');
+      out('     (try emacs... just kidding, never)', 'dim');
+    }},
+
+    emacs: { desc:'Open the other editor', run: () => {
+      out('emacs: a great operating system, lacking only a decent editor', 'warn');
+    }},
+
+    rm: { desc:'Remove files', run: (a) => {
+      if (a.includes('-rf') && (a.includes('/') || a.includes('--no-preserve-root'))) {
+        out("you can't be serious", 'err');
+        out('rm: it is dangerous to operate recursively on /', 'err');
+        out('rm: use --no-preserve-root to override this safety check', 'dim');
+        return;
+      }
+      out('rm: nothing to remove (this is a website, not a real fs)', 'err');
+    }}
+  };
+
+  // help alias
+  COMMANDS.h = { ...COMMANDS.help, desc:'Alias for help' };
+
+  /* ============================================================
+     HISTORY + INPUT HANDLING
+     ============================================================ */
+  const history = [];
+  let histIdx = -1;
+
+  async function execute(raw) {
+    const line = raw.trim();
+    echoCmd(raw);
+    if (!line) return;
+    history.unshift(line);
+    histIdx = -1;
+
+    // ---- Python REPL mode: every line goes to the interpreter ----
+    if (pythonMode) {
+      if (/^(exit|quit)\s*\(\s*\)\s*$/i.test(line) || /^(:?q|exit|quit)$/i.test(line)) {
+        pythonMode = false;
+        updatePromptUI();
+        out('exited python REPL', 'dim');
+        addActivity('info', 'exited python REPL');
+        return;
+      }
+      addActivity('info', `py: <span class="term-out-info">${escapeHtml(line.length > 30 ? line.slice(0,27)+'...' : line)}</span>`);
+      await runPythonLine(line);
+      return;
+    }
+
+    // Shortcut: typing `flag{...}` (or `{...}`) on its own runs the flag command
+    if (/^(flag)?\{.*\}$/i.test(line)) {
+      addActivity('info', `flag attempt: <span class="term-out-mag">${escapeHtml(line)}</span>`);
+      try { await COMMANDS.flag.run([line]); }
+      catch (e) { out('error: '+escapeHtml(e.message||e), 'err'); }
+      return;
+    }
+    const [cmdName, ...args] = line.split(/\s+/);
+    const cmd = COMMANDS[cmdName.toLowerCase()];
+    if (!cmd) {
+      addActivity('err', `unknown: ${escapeHtml(cmdName)}`);
+      out('command not found: '+escapeHtml(cmdName)+". Type 'help'.", 'err');
+      return;
+    }
+    addActivity('info', `cmd: <span class="term-out-info">${escapeHtml(line.length > 38 ? line.slice(0,35)+'...' : line)}</span>`);
+    try { await cmd.run(args); }
+    catch (e) { out('error: '+escapeHtml(e.message||e), 'err'); }
+  }
+
+  // Global link-click activity logging (any <a> on the page)
+  document.body.addEventListener('click', (e) => {
+    const a = e.target.closest('a');
+    if (!a || !a.href || !/^https?:/i.test(a.href)) return;
+    try {
+      const host = new URL(a.href).hostname;
+      addActivity('info', `opened <span class="term-out-info">${escapeHtml(host)}</span>`);
+    } catch (_) {}
+  });
+
+  // Only refocus the input if the user isn't selecting text — preserves drag-to-select
+  term.addEventListener('mouseup', () => {
+    const sel = window.getSelection();
+    if (sel && sel.toString().length > 0) return;
+    termInput.focus({ preventScroll: true });
+  });
+  termInput.focus({ preventScroll: true });
+
+  termInput.addEventListener('keydown', async (e) => {
+    // Any key in the input snaps the output area to the bottom so you can see latest output
+    term.scrollTop = term.scrollHeight;
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const v = termInput.value;
+      termInput.value = '';
+      await execute(v);
+      term.scrollTop = term.scrollHeight;
+      return;
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!history.length) return;
+      histIdx = Math.min(histIdx+1, history.length-1);
+      termInput.value = history[histIdx];
+      setTimeout(() => termInput.setSelectionRange(termInput.value.length, termInput.value.length), 0);
+      return;
+    }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (histIdx <= 0) { histIdx=-1; termInput.value=''; return; }
+      histIdx--;
+      termInput.value = history[histIdx];
+      return;
+    }
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const part = termInput.value.trim();
+      if (!part) return;
+      const m = Object.keys(COMMANDS).filter(k => k.startsWith(part));
+      if (m.length === 1) termInput.value = m[0];
+      else if (m.length > 1) { echoCmd(termInput.value); out(m.join('   '), 'dim'); }
+      return;
+    }
+    if (e.ctrlKey && e.key.toLowerCase() === 'l') {
+      e.preventDefault();
+      termOutput.innerHTML = '';
+      return;
+    }
+    if (e.ctrlKey && e.key.toLowerCase() === 'c') {
+      // If user has selected text, let the browser copy it instead of aborting
+      const sel = window.getSelection();
+      if (sel && sel.toString().length > 0) return;
+      e.preventDefault();
+      echoCmd(termInput.value+'^C');
+      termInput.value = '';
+      histIdx = -1;
+      // In Python REPL, Ctrl+C drops back to bash (mirrors real python behavior)
+      if (pythonMode) {
+        pythonMode = false;
+        updatePromptUI();
+        out('KeyboardInterrupt', 'warn');
+        out('exited python REPL', 'dim');
+        addActivity('info', 'exited python REPL (^C)');
+      }
+      return;
+    }
+  });
+
+  /* ============================================================
+     BOOT
+     ============================================================ */
+  function boot() {
+    const lines = [
+      ['['+new Date().toISOString().slice(11,19)+`] booting ${CONFIG.clubShort} terminal v1.0.0...`, 'dim'],
+      ['[ OK ] mounted /dev/club on /', 'ok'],
+      ['[ OK ] started network manager', 'ok'],
+      ['[ OK ] started session for user hacker', 'ok'],
+      ['[ OK ] CTF subsystem ready: '+CHALLENGES.length+' challenges loaded', 'ok'],
+      ['', '']
+    ];
+    let i = 0;
+    const tick = () => {
+      if (i >= lines.length) {
+        printPage('home');
+        return;
+      }
+      const [t, c] = lines[i++];
+      if (t) out(t, c); else blank();
+      setTimeout(tick, 100);
+    };
+    tick();
+  }
+
+  // Populate dynamic Club Info + Recent Activity fields from the upcoming-meeting helper
+  (function populateDynamicFields() {
+    const next = upcomingThursdays(1)[0];
+    const label = fmtNextMeeting(next);
+    const infoNext = document.getElementById('info-next');
+    const logNext  = document.getElementById('log-next-meeting');
+    if (infoNext) infoNext.textContent = label;
+    if (logNext)  logNext.textContent  = label;
+  })();
+
+  /* ============================================================
+     APPLY CONFIG — sync the HTML defaults to whatever's in CONFIG
+     so editing the CONFIG block updates the page everywhere
+     ============================================================ */
+  (function applyConfig() {
+    const set = (sel, val) => { const el = document.querySelector(sel); if (el) el.textContent = val; };
+    const setHref = (sel, href) => { const el = document.querySelector(sel); if (el) el.href = href; };
+
+    // <head> + topbar
+    document.title = `${CONFIG.clubName} // terminal`;
+    const meta = document.querySelector('meta[name="description"]');
+    if (meta) meta.content = CONFIG.description;
+    set('.topbar-brand', CONFIG.clubName);
+
+    // Center panel header path
+    const ph = document.querySelector('.panel-header');
+    if (ph) {
+      // Rebuild the inner "~ /<short>/<file>" while preserving the current-file span
+      const cur = document.getElementById('current-file');
+      const curText = cur ? cur.textContent : 'index.tsx';
+      const headerSpan = ph.querySelector('span:first-child');
+      if (headerSpan) headerSpan.innerHTML = `<span class="panel-header-icon">~</span>/${CONFIG.clubShort}/<span id="current-file">${curText}</span>`;
+    }
+
+    // Live terminal prompt
+    const livePrompt = document.querySelector('.term-input-line .term-prompt');
+    if (livePrompt && !pythonMode) livePrompt.textContent = `hacker@${CONFIG.clubShort}`;
+
+    // Right-column Club Info rows
+    const founded  = document.querySelector('.info-row .info-val');  // first value cell — Founded
+    if (founded) founded.textContent = CONFIG.founded;
+    const members  = document.getElementById('info-members');
+    if (members) members.textContent = CONFIG.officers.length + 1;  // officers + advisor
+    const location = document.querySelectorAll('.info-row .info-val');
+    if (location.length) location[location.length-1].textContent = CONFIG.meetingRoom;
+
+    // Recent Activity seed lines (the pre-baked ones)
+    const log = document.getElementById('activity-log');
+    if (log) {
+      const lines = log.querySelectorAll('.log-line');
+      // line[0] = Club founded, line[2] = Workshops weekly · Room
+      if (lines[0]) lines[0].innerHTML = `<span class="log-tag">[INFO]</span> Club founded — ${CONFIG.founded}`;
+      const memberLink = document.getElementById('log-members');
+      if (memberLink) memberLink.textContent = CONFIG.officers.length + 1;
+      if (lines[2]) lines[2].innerHTML = `<span class="log-tag">[ OK ]</span> Workshops weekly · ${CONFIG.meetingRoom}`;
+    }
+
+    // Quick Links + topbar Join button
+    setHref('a.btn-register', CONFIG.links.signup);
+    document.querySelectorAll('a').forEach(a => {
+      const href = a.getAttribute('href') || '';
+      if (href.includes('PMCYB/club_signup')) a.href = CONFIG.links.signup;
+      else if (href.includes('theroost.oit.edu/feeds')) a.href = CONFIG.links.roost;
+      else if (href.includes('discord.gg/EXAMPLE') || (href.includes('discord.gg') && a.textContent.includes('EXAMPLE'))) a.href = CONFIG.links.discord;
+    });
+  })();
+  boot();
+</script>
+
+</body>
+</html>
