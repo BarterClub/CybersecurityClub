@@ -1,0 +1,11 @@
+# Files in this list are NOT uploaded to Cloudflare as public static assets.
+# Same syntax as .gitignore. Files/directories starting with `.` (like .git/,
+# .claude/, .gitignore) are auto-excluded by Cloudflare and don't need listing.
+
+# Project documentation — repo-only, not for the public site
+CLAUDE.md
+README.md
+
+# Cloudflare config files — meta, not content
+wrangler.jsonc
+wrangler.toml

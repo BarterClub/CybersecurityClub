@@ -1,0 +1,25 @@
+{
+  // Cloudflare Workers static-assets config.
+  //
+  // This repo is a single-file static site (`index.html`). We don't have a
+  // Worker entrypoint — just static files — so we use Workers' built-in
+  // static-assets feature: the contents of `assets.directory` are uploaded
+  // and served directly, no server code required.
+  //
+  // The deploy command configured in the Cloudflare dashboard
+  // (`npx wrangler versions upload`) reads this file and uploads everything
+  // under `assets.directory`, minus what's listed in `.assetsignore` (and
+  // minus dotfiles, which Cloudflare excludes automatically).
+  //
+  // To rename the project, change `name` here AND in Cloudflare dashboard:
+  //   Workers & Pages → cybersecurityclub → Settings → General → Name
+  //
+  // `compatibility_date` pins runtime semantics — bump it occasionally as
+  // Cloudflare adds new behaviors. https://developers.cloudflare.com/workers/configuration/compatibility-dates/
+
+  "name": "cybersecurityclub",
+  "compatibility_date": "2025-04-01",
+  "assets": {
+    "directory": "."
+  }
+}
