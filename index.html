@@ -107,8 +107,8 @@
     cursor: pointer; user-select: none; transition: text-shadow .15s;
     display: inline-flex; align-items: center; gap: 10px; }
   .topbar-brand:hover { text-shadow: 0 0 8px var(--accent-dim); }
-  .topbar-logo { height: 44px; width: auto; display: block; flex-shrink: 0; }
-  @media (max-width: 600px) { .topbar-logo { height: 32px; } }
+  .topbar-logo { height: 75px; width: auto; display: block; flex-shrink: 0; }
+  @media (max-width: 600px) { .topbar-logo { height: 48px; } }
   .tabs { display: flex; gap: 0; flex-wrap: wrap; }
   .tab { padding: 4px 14px; color: var(--text-dim); border-right: 1px solid var(--border);
     cursor: pointer; transition: all .15s; text-decoration: none; background: none; border-top: none; border-bottom: none; border-left: none; font: inherit;
@@ -1205,8 +1205,10 @@ _text
         const cls = state === 'open' ? 'ok' : state === 'filtered' ? 'warn' : 'dim';
         out(`${port.padEnd(10)}<span class="term-out-${cls}">${state.padEnd(10)}</span>${svc.padEnd(16)}${ver}`);
       }
-      // CTF #8: leak a flag in a service banner when the target is the local host (10.50.0.1)
-      if (target === '10.50.0.1' || target === 'localhost' || target === '127.0.0.1') {
+      // CTF #8: leak a flag in a service banner only when the player scans
+      // the exact IP surfaced by `ifconfig` (10.50.0.1). Bare `nmap` and
+      // `nmap localhost` / `nmap 127.0.0.1` deliberately do NOT leak.
+      if (target === '10.50.0.1') {
         await new Promise(r => setTimeout(r, 280));
         out(`1337/tcp  <span class="term-out-ok">open</span>      ctf-banner      <span class="term-out-mag">Banner: flag{nmap_finds_what_eyes_miss}</span>`);
         out(`|_ctf-banner: service is leaking debug data — submit the banner with \`flag &lt;text&gt;\``, 'dim');
