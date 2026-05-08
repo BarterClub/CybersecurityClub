@@ -79,6 +79,13 @@ python3 -m http.server 8000
 - Source: `oregontechowls.com/favicon.ico` (Hootie owl head, no wordmark — reads cleanly at favicon sizes).
 - Browsers cache favicons aggressively. After changing, hard-reload AND close/reopen the tab to actually see the new one.
 
+### Accessibility
+- `prefers-reduced-motion`: a CSS block + a `REDUCED_MOTION` JS constant honor the OS-level "reduce motion" preference. Collapses panel fade-ins, the progress shimmer, and the terminal typewriter delay (`LINE_DELAY` → 0).
+- `--text-dim` is set to a value (`#8499b5`) that passes WCAG AA contrast on both `--bg-1` and `--bg-2` panel backgrounds.
+- Left column (simulated CPU/Memory/Disk/Network) is `aria-hidden="true"` because the values are decorative random walks — nothing for a screen reader to surface.
+- Terminal output has `aria-live="polite"` so screen readers announce new lines from page printers and command output without interrupting in-progress speech.
+- Terminal input has `aria-label="Terminal command input"`. Decorative prompt spans (`hacker@cybersec`, path, `$`) are `aria-hidden`.
+
 ## Placeholders / things still to swap
 
 Most placeholders from the original template are now real values. A few remain:

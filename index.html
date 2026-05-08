@@ -107,7 +107,9 @@
   :root {
     /* Oregon Tech palette: navy #033a6b + gold #FFD24F */
     --bg-0: #04111f; --bg-1: #08192e; --bg-2: #0e2542;
-    --border: #1a3a5c; --text: #eaf0f6; --text-dim: #7088a3;
+    /* --text-dim was #7088a3 (fails WCAG AA on the bg-2 panels at 4.33:1).
+       Lifted to #8499b5 to pass AA on both bg-1 (~5.99:1) and bg-2 (~5.42:1). */
+    --border: #1a3a5c; --text: #eaf0f6; --text-dim: #8499b5;
     --accent: #ffd24f; --accent-dim: #8a6e1a;
     --warn: #ff8c42; --danger: #ff5e5e; --info: #6cb6ff; --magenta: #d484ff;
   }
@@ -365,14 +367,36 @@
   .panel:nth-child(2) { animation-delay: .15s; }
   .panel:nth-child(3) { animation-delay: .25s; }
   @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* Accessibility: respect users who've opted out of motion at the OS level.
+     Disables panel fade-in, progress shimmer, sparkline drop-shadow pulse,
+     hover transitions, etc. The terminal typewriter effect is dropped in JS
+     by checking the same media query (LINE_DELAY → 0). */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+    .progress-fill::after { display: none; }
+  }
 </style>
 </head>
 <body data-z="ZmxhZ3tjc3NfZGF0YV9hdHRyc19hcmVfdmlzaWJsZX0=">
 
 <!-- TOPBAR -->
+<!-- TOPBAR — owl logo + brand text + tab nav + "Join us" button.
+     - Brand text comes from CONFIG.clubName (applied by applyConfig at boot).
+     - To add a tab: copy a `<button data-tab="...">` line below AND add a
+       matching entry to PAGES + FILES + the `printers` map in JS.
+     - To rebrand the topbar logo: replace the `<img>` data-URI src below;
+       the image is base64-embedded so the file stays single-file. -->
 <header class="topbar">
   <div class="topbar-left">
     <span class="topbar-brand" onclick="location.reload()" title="Click to reload"><img class="topbar-logo" alt="Oregon Tech Owls" src="data:image/webp;base64,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"><span class="topbar-brand-text">OIT Cybersecurity Club Portland</span></span>
+    <!-- TABS — `data-tab` value must match a key in PAGES + FILES + the printers
+         map in JS. Add a new tab by adding a button here AND wiring it up there. -->
     <nav class="tabs">
       <button data-tab="home"    class="tab active">index.tsx</button>
       <button data-tab="about"   class="tab">about.md</button>
@@ -382,15 +406,23 @@
     </nav>
   </div>
   <div class="topbar-right">
-    <span class="score-badge" id="score-badge">CTF: 0/7</span>
+    <!-- score-badge text is overwritten at boot by updateScoreUI() to reflect
+         CHALLENGES.length and ctfState.solved.size. The literal below is just
+         the pre-JS fallback. -->
+    <span class="score-badge" id="score-badge">CTF: 0/9</span>
     <a class="btn-register" href="https://theroost.oit.edu/PMCYB/club_signup" target="_blank" rel="noopener">join us</a>
   </div>
 </header>
 
+<!-- LAYOUT — 3-column grid on desktop (left widgets / center terminal / right info)
+     stacks vertically below 1100px. The grid is defined in CSS (.layout). -->
 <div class="layout">
 
-  <!-- LEFT: stats -->
-  <aside class="col">
+  <!-- LEFT: simulated system widgets. All values are random walks via jitter()
+       in JS — they're aesthetic, not real metrics. Safe to remove a panel by
+       deleting one <section class="panel"> below.
+       aria-hidden so screen readers don't read meaningless decorative numbers. -->
+  <aside class="col" aria-hidden="true">
     <section class="panel">
       <div class="panel-header">
         <span><span class="panel-header-icon">󰻠</span> CPU</span>
@@ -436,32 +468,43 @@
     </section>
   </aside>
 
-  <!-- CENTER: pages + terminal -->
+  <!-- CENTER: page content + interactive terminal.
+       printPage(name) writes page text into the terminal scroll. The
+       terminal input below the output is the live REPL. Tab navigation
+       at the top swaps which printPage runs. -->
   <main class="col">
     <section class="panel" style="flex:1; display:flex; flex-direction:column; min-height:0;">
       <div class="panel-header">
         <span><span class="panel-header-icon">~</span>/cybersec/<span id="current-file">index.tsx</span></span>
         <span>main</span>
       </div>
-      <div class="terminal" id="term" tabindex="0" style="flex:1; height:auto; min-height:0; margin:0; border:0;">
-        <div class="term-output" id="term-output"></div>
+      <div class="terminal" id="term" tabindex="0" role="region" aria-label="Interactive terminal" style="flex:1; height:auto; min-height:0; margin:0; border:0;">
+        <!-- aria-live=polite: new lines from page printers + commands get announced
+             to screen readers without interrupting in-progress speech. -->
+        <div class="term-output" id="term-output" aria-live="polite" aria-atomic="false"></div>
         <div class="term-input-line">
-          <span class="term-prompt">hacker@cybersec</span>
-          <span class="term-path" id="term-path">~/projects</span>
-          <span class="term-dollar">$</span>
-          <input class="term-input" id="term-input" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+          <span class="term-prompt" aria-hidden="true">hacker@cybersec</span>
+          <span class="term-path" id="term-path" aria-hidden="true">~/projects</span>
+          <span class="term-dollar" aria-hidden="true">$</span>
+          <input class="term-input" id="term-input" aria-label="Terminal command input" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
         </div>
       </div>
     </section>
 
   </main>
 
-  <!-- RIGHT: club info / quick links / recent activity -->
+  <!-- RIGHT: club info / quick links / recent activity feed.
+       - Club Info: pre-baked HTML, populated/updated by applyConfig at boot.
+       - Quick Links: hardcoded hrefs; applyConfig rewrites placeholder URLs
+         (signup / roost / discord) to whatever's in CONFIG.links.
+       - Recent Activity: seed lines below + dynamic additions via addActivity(). -->
   <aside class="col">
     <section class="panel">
       <div class="panel-header"><span><span class="panel-header-icon">󰃭</span> Club Info</span></div>
       <div class="panel-body">
-        <div class="info-row"><span class="info-key">Founded</span><span class="info-val">2025</span></div>
+        <!-- Each info-row's value carries an `id="info-*"` so applyConfig can target
+             it directly. Reorder these freely — applyConfig won't break. -->
+        <div class="info-row"><span class="info-key">Founded</span><span class="info-val" id="info-founded">2025</span></div>
         <div class="info-row"><span class="info-key">Members</span><a href="#" onclick="switchTab('contact');return false;" class="info-val" id="info-members" style="text-decoration:none">12</a></div>
         <div class="info-row"><span class="info-key">Next meeting</span><span class="info-val" id="info-next">—</span></div>
         <!-- Next special event row — JS hides this row when there are no upcoming entries
@@ -470,13 +513,16 @@
           <span class="info-key">Term highlight</span>
           <a href="#" onclick="switchTab('events');return false;" class="info-val" id="info-event" style="text-decoration:none">—</a>
         </div>
-        <div class="info-row"><span class="info-key">Focus</span><span class="info-val">Cybersec</span></div>
-        <div class="info-row"><span class="info-key">Location</span><span class="info-val">Room 259</span></div>
+        <div class="info-row"><span class="info-key">Focus</span><span class="info-val" id="info-focus">Cybersec</span></div>
+        <div class="info-row"><span class="info-key">Location</span><span class="info-val" id="info-location">Room 259</span></div>
       </div>
     </section>
     <section class="panel">
       <div class="panel-header"><span><span class="panel-header-icon">⚡</span> Quick Links</span></div>
       <div class="panel-body">
+        <!-- Quick Links — to add another, copy a <li> below and use a real href.
+             The signup/roost/discord URLs are also rewritten by applyConfig at boot
+             from CONFIG.links so changes there propagate here too. -->
         <ul class="links-list">
           <li><a href="https://theroost.oit.edu/PMCYB/club_signup" target="_blank" rel="noopener">Join the club</a></li>
           <li><a href="https://theroost.oit.edu/feeds?type=club&type_id=35576&tab=about" target="_blank" rel="noopener">The Roost page</a></li>
@@ -490,9 +536,12 @@
         <span style="color:var(--text-dim)">tail -f</span>
       </div>
       <div class="panel-body" id="activity-log" style="flex:1; overflow:auto; min-height:0;">
-        <div class="log-line log-info"><span class="log-tag">[INFO]</span> Club founded — 2025</div>
+        <!-- Pre-baked seed log entries. Lines that applyConfig rewrites carry an
+             `id="log-*"`; reorder these freely without breaking the JS.
+             addActivity(level, html) inserts new lines at the top at runtime. -->
+        <div class="log-line log-info" id="log-founded"><span class="log-tag">[INFO]</span> Club founded — 2025</div>
         <div class="log-line log-ok"><span class="log-tag">[ OK ]</span> <a href="#" onclick="switchTab('contact');return false;" style="color:inherit;text-decoration:none"><span id="log-members">5</span> officers onboarded — view roster →</a></div>
-        <div class="log-line log-ok"><span class="log-tag">[ OK ]</span> Workshops weekly · Room 259</div>
+        <div class="log-line log-ok" id="log-workshops"><span class="log-tag">[ OK ]</span> Workshops weekly · Room 259</div>
         <div class="log-line log-warn"><span class="log-tag">[WARN]</span> Pizza inventory at 12%</div>
         <div class="log-line log-info"><span class="log-tag">[INFO]</span> Next: <span id="log-next-meeting">—</span></div>
         <div class="log-line log-ok"><span class="log-tag">[WAIT]</span> Awaiting next CTF...</div>
@@ -501,6 +550,10 @@
   </aside>
 </div>
 
+<!-- STATUS BAR — vim-mode-style footer. Cells are populated dynamically:
+     - status-page: current tab name (driven by switchTab)
+     - clock: live updating every second
+     - status-score: matches the topbar CTF badge -->
 <footer class="statusbar">
   <span class="status-mode">NORMAL</span>
   <span class="status-cell" id="status-page">main</span>
@@ -836,7 +889,10 @@ _text
      PAGE PRINTERS — render each "page" into the terminal scroll
      line-by-line, like an old teletype
      ============================================================ */
-  const LINE_DELAY = 55;  // ms between printed lines
+  // Honor prefers-reduced-motion: collapse the typewriter delay so page printers
+  // render instantly for users who've opted out of motion at the OS level.
+  const REDUCED_MOTION = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const LINE_DELAY = REDUCED_MOTION ? 0 : 55;  // ms between printed lines
   let printGen = 0;       // incremented on each new printPage; lets in-flight prints finish fast if the user clicks again
   function _sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
   async function slow(html, cls = '', myGen = printGen) {
@@ -1785,7 +1841,7 @@ ${bot}
       }
       const [t, c] = lines[i++];
       if (t) out(t, c); else blank();
-      setTimeout(tick, 100);
+      setTimeout(tick, REDUCED_MOTION ? 0 : 100);
     };
     tick();
   }
@@ -1846,24 +1902,21 @@ ${bot}
     const livePrompt = document.querySelector('.term-input-line .term-prompt');
     if (livePrompt && !pythonMode) livePrompt.textContent = `hacker@${CONFIG.clubShort}`;
 
-    // Right-column Club Info rows
-    const founded  = document.querySelector('.info-row .info-val');  // first value cell — Founded
-    if (founded) founded.textContent = CONFIG.founded;
-    const members  = document.getElementById('info-members');
-    if (members) members.textContent = CONFIG.members;
-    const location = document.querySelectorAll('.info-row .info-val');
-    if (location.length) location[location.length-1].textContent = CONFIG.meetingRoom;
+    // Right-column Club Info rows — each value cell has an id="info-*" so we
+    // can target it directly. If a row is missing or hidden, the corresponding
+    // line is a no-op, so reordering or hiding rows in HTML is safe here.
+    set('#info-founded', CONFIG.founded);
+    set('#info-members', CONFIG.members);
+    set('#info-location', CONFIG.meetingRoom);
 
-    // Recent Activity seed lines (the pre-baked ones)
-    const log = document.getElementById('activity-log');
-    if (log) {
-      const lines = log.querySelectorAll('.log-line');
-      // line[0] = Club founded, line[2] = Workshops weekly · Room
-      if (lines[0]) lines[0].innerHTML = `<span class="log-tag">[INFO]</span> Club founded — ${CONFIG.founded}`;
-      const memberLink = document.getElementById('log-members');
-      if (memberLink) memberLink.textContent = CONFIG.officers.length;
-      if (lines[2]) lines[2].innerHTML = `<span class="log-tag">[ OK ]</span> Workshops weekly · ${CONFIG.meetingRoom}`;
-    }
+    // Recent Activity seed lines — addressed by ID so reordering them in HTML
+    // doesn't silently break this rewrite.
+    const founded = document.getElementById('log-founded');
+    if (founded) founded.innerHTML = `<span class="log-tag">[INFO]</span> Club founded — ${CONFIG.founded}`;
+    const memberLink = document.getElementById('log-members');
+    if (memberLink) memberLink.textContent = CONFIG.officers.length;
+    const workshops = document.getElementById('log-workshops');
+    if (workshops) workshops.innerHTML = `<span class="log-tag">[ OK ]</span> Workshops weekly · ${CONFIG.meetingRoom}`;
 
     // Quick Links + topbar Join button
     setHref('a.btn-register', CONFIG.links.signup);
