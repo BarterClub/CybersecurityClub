@@ -11,15 +11,28 @@
   // under `assets.directory`, minus what's listed in `.assetsignore` (and
   // minus dotfiles, which Cloudflare excludes automatically).
   //
+  // Defaults below match what Cloudflare's GitHub bot generates, so the
+  // config doesn't drift if the bot ever re-runs:
+  //   - `observability.enabled` turns on logs/metrics in the Cloudflare dashboard.
+  //   - `nodejs_compat` enables Node.js compat APIs (harmless for static; useful
+  //     if you ever add server-side Worker code).
+  //
   // To rename the project, change `name` here AND in Cloudflare dashboard:
   //   Workers & Pages → cybersecurityclub → Settings → General → Name
   //
   // `compatibility_date` pins runtime semantics — bump it occasionally as
   // Cloudflare adds new behaviors. https://developers.cloudflare.com/workers/configuration/compatibility-dates/
 
+  "$schema": "node_modules/wrangler/config-schema.json",
   "name": "cybersecurityclub",
-  "compatibility_date": "2025-04-01",
+  "compatibility_date": "2026-05-07",
+  "observability": {
+    "enabled": true
+  },
   "assets": {
     "directory": "."
-  }
+  },
+  "compatibility_flags": [
+    "nodejs_compat"
+  ]
 }
