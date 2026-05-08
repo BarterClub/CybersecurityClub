@@ -865,6 +865,7 @@ _text
     await slow(`${CONFIG.campusName} · ${CONFIG.description}`, 'dim', g);
     await slowBlank(g);
     await slow('Type <span class="term-out-ok">help</span> for commands. Type <span class="term-out-mag">ctf</span> to start solving challenges.', 'dim', g);
+    await slow('New here? Type <span class="term-out-ok">about</span> for how to get started.', 'dim', g);
   }
 
   async function printAbout() {
@@ -880,7 +881,17 @@ _text
     await slow('  <span class="term-out-ok">▸</span> Defensive ops &amp; SIEM (Splunk, Wazuh, network forensics)', '', g);
     await slow('  <span class="term-out-ok">▸</span> CTF preparation — internal practice + external competitions', '', g);
     await slowBlank(g);
-    await slow('Membership is free. No prior experience required. Bring a laptop. Curiosity is mandatory.', '', g);
+    await slow('<span class="term-out-mag">## How to get started</span>', '', g);
+    await slowBlank(g);
+    await slow("It's two things:", '', g);
+    await slow(`  <span class="term-out-warn">1.</span> <a href="${CONFIG.links.signup}" target="_blank" rel="noopener">Sign up on The Roost</a> — that's the only formal step.`, '', g);
+    await slow("  <span class=\"term-out-warn\">2.</span> Show up to meetings you can make. We won't take attendance.", '', g);
+    await slowBlank(g);
+    await slow('Two kinds of meetings:', 'dim', g);
+    await slow(`  <span class="term-out-ok">▸</span> <span class="term-out-info">Weekly labs</span> — every ${CONFIG.meetingDay}, ${CONFIG.meetingTime}, ${CONFIG.meetingRoom}. Hands-on practice on whatever we're working on that week.`, '', g);
+    await slow(`  <span class="term-out-ok">▸</span> <span class="term-out-info">Term highlights</span> — bigger events at quarter end (CTFs, guest speakers, showcases). See the <a href="#" onclick="switchTab('events');return false;">events page</a> for what's coming up.`, '', g);
+    await slowBlank(g);
+    await slow("Can't make every Thursday? Come to whatever you can. No prior experience required. Bring a laptop. Curiosity is mandatory. Membership is free.", '', g);
   }
 
   /* ============================================================
