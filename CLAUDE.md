@@ -174,6 +174,18 @@ To deploy elsewhere:
 - **GitHub Pages, Netlify, Vercel**: just point at the repo. The `wrangler.jsonc` and `.assetsignore` are harmless to other hosts (they'll just sit there unused).
 - **Custom domain**: set in Cloudflare → project → Settings → Custom domains. Update `og:url` in `<head>` to match.
 
+## QA / smoke testing
+
+A Claude Code subagent at `.claude/agents/site-tester.md` runs an end-to-end smoke test of the site:
+- Walks through every tab and checks expected content rendered
+- Runs sample terminal commands
+- Solves all 9 CTF challenges in order, verifies score increments
+- Re-runs the nmap and SQLi leak guards (regression check — flags must not surface without the intended interaction)
+- Tests mobile layout for horizontal overflow
+- Greps `index.html` to confirm the obfuscated flags (#3, #4, #6, #8, #9) don't appear in source
+
+Invoke from a Claude Code session as the `site-tester` subagent; reports a pass/fail summary by section. Use this after non-trivial edits to `index.html`, especially anything touching `CHALLENGES`, `COMMANDS`, page printers, or layout CSS.
+
 ## Stack reference (if going multi-file later)
 
 - BeaverHacks's actual stack: Next.js 15 (App Router), TypeScript, Tailwind v4, shadcn/ui, PostgreSQL + Prisma, Better Auth, Turborepo + pnpm.
