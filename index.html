@@ -24,6 +24,17 @@
     meetingTime: '4:00 PM',
     meetingRoom: 'Room 259',
 
+    // --- Special events ---
+    // Override a regular weekly meeting on a specific Thursday with a different title
+    // (e.g. CTF night, guest speaker, hackathon prep). `detail` is optional — if omitted,
+    // falls back to the standard time + room. Past dates auto-disappear from the events page.
+    // Format: { date: 'YYYY-MM-DD', title: '...', detail: '... (optional)' }
+    specialEvents: [
+      { date: '2026-06-04',
+        title: 'CTF Practice Night',
+        detail: '4:00 PM · Room 259 · CTF practice problems + pizza · all skill levels' },
+    ],
+
     // --- Roster ---
     members: 12,                       // total club members (officers + general members)
 
@@ -883,12 +894,21 @@ _text
   function fmtEventCard(d) { return `${_DAY_ABBR(d.getDay())} ${MONTHS_SHORT[d.getMonth()]} ${String(d.getDate()).padStart(2)}`; }
   function fmtNextMeeting(d) { return `${_Day(d.getDay())} ${MONTHS_NICE[d.getMonth()]} ${d.getDate()} · ${CONFIG.meetingTime}`; }
 
+  // Format a Date as ISO `YYYY-MM-DD` for matching against CONFIG.specialEvents
+  function isoDate(d) {
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  }
+
   async function printEvents() {
     const g = printGen;
     await slow(`# events.json — every ${CONFIG.meetingDay} at ${CONFIG.meetingTime}, ${CONFIG.meetingRoom}`, 'mag', g);
     await slowBlank(g);
     for (const d of upcomingThursdays(5)) {
-      await slow(`  <span class="term-out-warn">${fmtEventCard(d)}</span>  <span class="term-out-info">Weekly meeting</span>  <span class="term-out-dim">· ${CONFIG.meetingTime} · ${CONFIG.meetingRoom}</span>`, '', g);
+      const special = (CONFIG.specialEvents || []).find(e => e.date === isoDate(d));
+      const title      = special ? special.title : 'Weekly meeting';
+      const titleClass = special ? 'mag'         : 'info';
+      const detail     = (special && special.detail) || `${CONFIG.meetingTime} · ${CONFIG.meetingRoom}`;
+      await slow(`  <span class="term-out-warn">${fmtEventCard(d)}</span>  <span class="term-out-${titleClass}">${title}</span>  <span class="term-out-dim">· ${detail}</span>`, '', g);
     }
   }
 
