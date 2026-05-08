@@ -324,17 +324,15 @@
 
   /* INFO ROWS */
   .info-row { display: flex; justify-content: space-between; padding: 6px 0;
-    border-bottom: 1px dotted var(--border); font-size: 12px; }
+    border-bottom: 1px dotted var(--border); font-size: 12px;
+    align-items: flex-start; gap: 8px; }
   .info-row:last-child { border-bottom: none; }
-  .info-key { color: var(--text-dim); }
-  .info-val { color: var(--accent); }
-
-  /* Stacked variant — label on top, value below. Used for the Term highlight
-     row where titles can wrap awkwardly in the standard side-by-side layout. */
-  .info-row.info-row-stack { flex-direction: column; align-items: stretch; gap: 3px; }
-  .info-row.info-row-stack .info-key { font-size: 10px; text-transform: uppercase; letter-spacing: .1em; }
-  /* value inherits the standard --accent color from .info-val so it matches the other rows */
-  .info-row.info-row-stack .info-val:hover { text-decoration: underline; }
+  /* Label never wraps — keeps the column on one line even when the value wraps to multiple. */
+  .info-key { color: var(--text-dim); flex-shrink: 0; white-space: nowrap; }
+  /* Value right-aligns each line so wrapped text reads cleanly against the right edge. */
+  .info-val { color: var(--accent); text-align: right; }
+  /* Underline only the clickable values (Members → contact, Term highlight → events) */
+  a.info-val:hover { text-decoration: underline; }
 
   /* LINKS / LOGS */
   .links-list { list-style: none; }
@@ -468,7 +466,7 @@
         <div class="info-row"><span class="info-key">Next meeting</span><span class="info-val" id="info-next">—</span></div>
         <!-- Next special event row — JS hides this row when there are no upcoming entries
              in CONFIG.specialEvents, so an empty schedule doesn't leave a stale "—" -->
-        <div class="info-row info-row-stack" id="info-event-row" style="display:none">
+        <div class="info-row" id="info-event-row" style="display:none">
           <span class="info-key">Term highlight</span>
           <a href="#" onclick="switchTab('events');return false;" class="info-val" id="info-event" style="text-decoration:none">—</a>
         </div>
