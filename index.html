@@ -459,6 +459,12 @@
         <div class="info-row"><span class="info-key">Founded</span><span class="info-val">2025</span></div>
         <div class="info-row"><span class="info-key">Members</span><a href="#" onclick="switchTab('contact');return false;" class="info-val" id="info-members" style="text-decoration:none">12</a></div>
         <div class="info-row"><span class="info-key">Next meeting</span><span class="info-val" id="info-next">—</span></div>
+        <!-- Next special event row — JS hides this row when there are no upcoming entries
+             in CONFIG.specialEvents, so an empty schedule doesn't leave a stale "—" -->
+        <div class="info-row" id="info-event-row" style="display:none">
+          <span class="info-key">Next event</span>
+          <a href="#" onclick="switchTab('events');return false;" class="info-val" id="info-event" style="text-decoration:none">—</a>
+        </div>
         <div class="info-row"><span class="info-key">Focus</span><span class="info-val">Cybersec</span></div>
         <div class="info-row"><span class="info-key">Location</span><span class="info-val">Room 259</span></div>
       </div>
@@ -1731,6 +1737,24 @@ ${bot}
     const logNext  = document.getElementById('log-next-meeting');
     if (infoNext) infoNext.textContent = label;
     if (logNext)  logNext.textContent  = label;
+
+    // Next special event (CTF night, guest speaker, etc.). Find the soonest
+    // entry in CONFIG.specialEvents whose date is today or later, and surface
+    // it in the Club Info panel. If there are none upcoming, leave the row hidden.
+    const todayMidnight = new Date();
+    todayMidnight.setHours(0, 0, 0, 0);
+    const nextSpecial = (CONFIG.specialEvents || [])
+      .map(e => ({ ...e, _d: new Date(e.date + 'T00:00:00') }))   // local midnight, not UTC
+      .filter(e => !isNaN(e._d) && e._d >= todayMidnight)
+      .sort((a, b) => a._d - b._d)[0];
+    if (nextSpecial) {
+      const eventRow = document.getElementById('info-event-row');
+      const eventEl  = document.getElementById('info-event');
+      if (eventRow && eventEl) {
+        eventEl.textContent = `${_Day(nextSpecial._d.getDay())} ${MONTHS_NICE[nextSpecial._d.getMonth()]} ${nextSpecial._d.getDate()} · ${nextSpecial.title}`;
+        eventRow.style.display = '';
+      }
+    }
   })();
 
   /* ============================================================
