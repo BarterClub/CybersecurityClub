@@ -1,17 +1,21 @@
-# Project: [Club Name] Website
+# Project: OIT Cybersecurity Club Portland Website
 
 > This file is read by Claude Code at the start of every session in this folder.
 > It captures the project's intent, architecture, and conventions so you don't have to re-explain.
 
 ## Overview
 
-A single-file HTML website for a student cybersecurity / CTF club. Terminal-aesthetic UI inspired by [beaverhacks.org](https://beaverhacks.org/). Includes a working in-browser command terminal, simulated system stats, animated UI, SPA-style navigation, and a 7-challenge CTF mode with a real Python REPL.
+A single-file HTML website for the OIT Cybersecurity Club Portland (Oregon Tech's Portland-Metro campus). Terminal-aesthetic UI inspired by [beaverhacks.org](https://beaverhacks.org/). Includes a working in-browser command terminal, simulated system stats, animated UI, SPA-style navigation, and an **8-challenge CTF mode** with a real Python REPL via Pyodide.
 
 ## Architecture
 
-- **Single-file**: All HTML, CSS, and JS live in `index.html` (~970 lines).
+- **Single-file**: All HTML, CSS, and JS live in `index.html` (~1760 lines).
 - **No build step**: Pure static HTML. Open directly in a browser, or serve with any static server.
-- **One runtime dependency**: [Pyodide](https://pyodide.org) (loaded lazily from jsDelivr CDN when the `python` command is first used; ~10MB).
+- **One runtime dependency**: [Pyodide](https://pyodide.org) (loaded lazily from jsDelivr CDN when the `python` command is first used; ~10 MB).
+- **Embedded image assets**: Two images are base64-embedded in the HTML to keep the single-file model intact:
+  - Topbar logo (Oregon Tech Owls athletics mark, ~9 KB)
+  - Favicon (Hootie owl head, 32×32 PNG, ~2 KB)
+- **Deployment**: Cloudflare Workers Static Assets via `wrangler.jsonc`. The Cloudflare dashboard's deploy command is `npx wrangler versions upload`. `.assetsignore` keeps `CLAUDE.md`, `README.md`, and `wrangler.jsonc` off the public site. Production branch: `main`.
 - **Future direction (open)**: Could be split into multiple files, or evolve into a Next.js app. Reference architecture: [`OregonStateHackathonClub/website`](https://github.com/OregonStateHackathonClub/website) — Next.js 15 + Tailwind v4 + shadcn/ui + Prisma + Better Auth, monorepo via Turborepo + pnpm.
 
 ## Local preview
@@ -20,6 +24,7 @@ A single-file HTML website for a student cybersecurity / CTF club. Terminal-aest
 # Easiest — just open it
 open index.html         # macOS
 xdg-open index.html     # Linux
+start index.html        # Windows
 
 # Proper local server (recommended for testing Pyodide / fetch behavior)
 python3 -m http.server 8000
@@ -28,22 +33,29 @@ python3 -m http.server 8000
 
 ## Key components in `index.html`
 
+### Configuration block
+- A `CONFIG` object near the top of the first `<script>` block holds all club-specific values: name, officers, advisor, meeting day/time/room, external links, member count.
+- `applyConfig()` runs at boot and syncs DOM elements to those values, so editing `CONFIG` and reloading is enough for routine updates.
+- **Note**: officer count is currently hardcoded at `6` in two places (Recent Activity and Club Info). The `CONFIG.officers` array has 5 officer entries — the 6th is the advisor (`CONFIG.advisor`). If you change the structure, update both display sites.
+
 ### Layout
-- **Top bar**: Tabs for `home / about / events / contact / ctf`. Tabs swap content via `switchTab(name)` — they don't navigate to separate pages.
-- **Three-column grid**: left (system widgets), center (page content + terminal), right (club info + processes + system).
-- **Bottom**: Sponsors, quick links, recent-activity log, vim-style status bar.
+- **Top bar**: Owl logo + brand text on the left; tab nav (`home / about / events / contact / ctf`); CTF score badge + "Join us" button on the right.
+- **Three-column grid**: left (system widgets — CPU / memory / disk / network with sparkline), center (page content + terminal), right (club info + quick links + recent activity).
+- **Bottom**: vim-style status bar.
 
 ### Terminal engine
-- Lives in the `<script>` block.
-- The `COMMANDS` object is the source of truth — every command is `{ desc, run(args) }`.
+- The `COMMANDS` object is the source of truth — every command is `{ desc, run(args), [usage, examples, notes] }`.
 - Adding a command means adding one entry; it auto-shows in `help` and is tab-completable. No other registration needed.
+- Optional `usage` / `examples` / `notes` fields render in `help <command>` detail view.
 - The `out(html, cls)` helper writes a line to terminal output. **It uses `innerHTML`** so commands can emit styled markup (`<span class="term-out-info">`). User input is escaped via `escapeHtml()` before display — don't bypass this.
 
 ### CTF system
-- `CHALLENGES` array defines all challenges.
-- **Flags are stored as FNV-1a hashes**, not plaintext. `flag <text>` hashes the submission and looks it up. This keeps casual View-Source from spoiling the answers while still allowing legitimate solving.
-- To add a flag: `hash: fnv1a('flag{your_flag_here}')`.
-- Hidden clues are scattered through the source — see "Things to be careful about" below.
+- `CHALLENGES` array defines all 8 challenges.
+- **Flags are stored as precomputed FNV-1a hex hashes** (e.g. `'778322a0'`), NOT as `fnv1a('flag{...}')` calls. The hashing function is still defined to hash player submissions — but the array contains literal hex strings so View Source can't harvest the answers via the construction code.
+- Challenges 1, 2, 5, 7 *intentionally* have plaintext / fragments / b64 in source — that IS the challenge. Don't remove. See "Hidden flags" below.
+- Challenges 3, 4, 6 are presented as encoded text in the brief itself (player decodes b64 / rot13 / XOR).
+- Challenge 8 (`nmap_recon`) is revealed only when the player runs `nmap 10.50.0.1` (the IP exposed by `ifconfig`). The banner string is base64-encoded and decoded with `atob()` at runtime — searching the source for `flag{` won't surface it.
+- Progress persists in `localStorage` under key `oit-cybersec-ctf-v1` — survives reloads in the same browser, but not incognito or other browsers. `ctf reset` clears.
 
 ### Pyodide
 - Lazy-loaded the first time `python` or `py` is invoked.
@@ -51,48 +63,54 @@ python3 -m http.server 8000
 - Loaded from `https://cdn.jsdelivr.net/pyodide/v0.26.4/full/`.
 
 ### Simulated stats
-- CPU / RAM / disk / network are intentionally fake (random walks via `jitter()`).
+- CPU / RAM / disk / network are intentionally fake (random walks via `jitter()` / `jitterFree()`).
+- The network-in sparkline plots a rolling 40-sample buffer of those simulated values — so the curve is "real" relative to the fake numbers.
 - This is an **aesthetic choice**, not a limitation. No real sites expose `/proc/stat` data.
 - If you ever want real metrics, you'd need a backend.
 
-## Placeholders to swap
+### Open Graph / Twitter Card meta tags
+- `<meta property="og:*">` and `<meta name="twitter:*">` in `<head>` control how the page renders when shared on Discord, Slack, iMessage, LinkedIn, etc.
+- **Hardcoded** with current `CONFIG` values, NOT driven by JS — most social previewers don't execute JS, so JS-applied values would be invisible to them. If you change `CONFIG.clubName` / `CONFIG.description`, mirror the change in the meta tags.
+- `og:image` hot-links the OIT Athletics owl logo at `oregontechowls.com/images/logos/site/site.png`. `data:` URIs aren't fetched by previewers, which is why we can't reuse the embedded favicon.
+- `og:url` is set to `https://barterclub.github.io/CybersecurityClub/` as a placeholder — update when the real deploy URL is known.
 
-Search the file for these and replace:
+### Favicon
+- Embedded as base64 in `<link rel="icon">` and `<link rel="apple-touch-icon">` (32×32 PNG, ~2 KB).
+- Source: `oregontechowls.com/favicon.ico` (Hootie owl head, no wordmark — reads cleanly at favicon sizes).
+- Browsers cache favicons aggressively. After changing, hard-reload AND close/reopen the tab to actually see the new one.
 
-| Placeholder | What it is |
-|---|---|
-| `[YOUR CLUB]` | Club display name |
-| `[your-club]` | Lowercase / URL-friendly version |
-| `[YEAR]`, `[N]`, `[Day]`, `[Time]` | Generic numeric/text placeholders |
-| `[Building / Room]` | Meeting location |
-| `[Sponsor 1]`, `[Sponsor 2]`, ... | Sponsor names (replace `<div class="sponsor-slot">` with `<img>` when you have logos) |
-| `discord.gg/EXAMPLE` | Discord invite |
-| `github.com/EXAMPLE` | Club GitHub org |
-| `instagram.com/EXAMPLE` | Instagram |
-| `club@example.edu` | Officer email |
-| `[Date]` in event cards | Specific event dates |
-| ASCII art block | Generate at https://patorjk.com/software/taag (use the "Slant" font to match BeaverHacks style) |
+## Placeholders / things still to swap
+
+Most placeholders from the original template are now real values. A few remain:
+
+| Placeholder | What it is | Status |
+|---|---|---|
+| `discord.gg/EXAMPLE` | Discord invite | TODO — used in 4+ places |
+| `og:url` content | Deployed URL for social previews | Placeholder; update post-deploy |
+| ASCII art block | Generated at https://patorjk.com/software/taag | Currently shows "CYBERSEC" |
 
 ## Design conventions
 
-- **Color palette in CSS variables**: All colors live at `:root`. To rebrand, change `--accent` (primary), `--warn` (amber accents), and `--info` (blue accents). Don't sprinkle hex values around the file.
+- **Color palette in CSS variables**: All colors live at `:root`. Currently set to Oregon Tech navy (`#04111f` / `#08192e` / `#0e2542`) + gold (`#ffd24f`). To rebrand, change `--accent` (primary), `--warn` (amber accents), `--info` (blue accents), and the `--bg-*` scale.
 - **Monospace throughout**: JetBrains Mono. Don't introduce sans-serif unless there's a clear reason.
 - **CRT scanlines**: `body::before` overlay. Some find it intense — easy to remove if needed.
-- **No `localStorage`**: CTF progress is in-memory only (resets on reload). If adding localStorage, account for the fact that progress will now persist across reloads but not across browsers / incognito.
-- **Animations are intentional**: Stat shimmers, panel fade-ins, blinking cursor, typing intro — these are part of the aesthetic, not gratuitous.
+- **CTF localStorage**: progress persists across reloads in the same browser, but not across browsers / incognito / private mode.
+- **Animations are intentional**: stat shimmers, panel fade-ins, blinking cursor, typing intro — these are part of the aesthetic, not gratuitous. (TODO: add `prefers-reduced-motion` support.)
 
-## Things to be careful about
+## Hidden flags (don't remove)
 
-These are the hidden flags that make the CTF work. **Don't remove them without updating `CHALLENGES`:**
+These are *intentionally* visible / discoverable in source — they ARE the challenge for #1, #2, #5, #7:
 
 | # | Where it's hidden | What to look for |
 |---|---|---|
-| 1 (recon) | HTML comment near the top of `<head>` | `flag{html_recon_is_step_one}` |
-| 2 (console) | `console.log()` call near the CTF state setup | `flag{console_log_is_loud}` |
+| 1 (recon) | HTML comment in `<head>` | `flag{html_recon_is_step_one}` |
+| 2 (console) | `console.log()` call near CTF state setup | `flag{console_log_is_loud}` |
 | 5 (obfuscation) | `_x1` … `_x6` JS variables, concatenated to `_motto` | `flag{string_concat_is_weak_obfuscation}` |
 | 7 (steganography) | `<body data-z="...">` attribute (base64-encoded) | `flag{css_data_attrs_are_visible}` |
 
 Challenges 3 (base64), 4 (rot13), and 6 (xor) are presented in the terminal itself when the user runs `ctf start <n>`.
+
+Challenge 8 (nmap_recon) is revealed only when the player scans `10.50.0.1` via the `nmap` command. The banner is base64-encoded so `Ctrl+F flag{` doesn't surface it.
 
 Other things:
 - Pyodide version is pinned. Don't bump it without smoke-testing the `python` command afterward.
@@ -101,18 +119,23 @@ Other things:
 
 ## How to add a new CTF challenge
 
-1. Pick a hiding spot for the flag (HTML comment, JS variable, encoded attribute, image metadata, etc.).
-2. Add an entry to the `CHALLENGES` array:
+1. Pick a hiding spot for the flag (HTML comment, JS variable, encoded attribute, terminal-only reveal, etc.).
+2. **Compute the FNV-1a hash of the flag separately** — DO NOT call `fnv1a('flag{...}')` in source, since that puts the plaintext in the page. Use a Node one-liner:
+   ```bash
+   node -e "function f(s){let h=0x811c9dc5;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=(h+((h<<1)+(h<<4)+(h<<7)+(h<<8)+(h<<24)))>>>0}return h.toString(16).padStart(8,'0')}; console.log(f('flag{your_flag}'))"
+   ```
+3. Add an entry to the `CHALLENGES` array with the precomputed hash:
    ```js
-   { id: 8,
+   { id: 9,
      name: 'your_challenge_name',
      points: 150,
-     brief: 'What the player sees when they run `ctf start 8`',
-     hint: 'What they see when they run `hint 8`',
-     hash: fnv1a('flag{your_actual_flag}') }
+     brief: 'What the player sees when they run `ctf start 9`',
+     hint: 'What they see when they run `hint 9`',
+     hash: 'a1b2c3d4' }   // <- precomputed hex, NOT a fnv1a() call
    ```
-3. (Optional) Add the challenge to the listing in `<div class="page" id="page-ctf">` for visibility.
-4. Test: open the file, run `ctf start 8`, confirm the brief shows; submit `flag flag{your_actual_flag}` and confirm it scores.
+4. (Optional) Add the challenge to the listing in `printCtf()` for visibility on the CTF page.
+5. If the flag plaintext appears anywhere in source as part of the reveal (e.g. a banner leak), encode it (base64, XOR, charCode array) so View Source doesn't surface it.
+6. Test: open the file, run `ctf start 9`, confirm the brief shows; submit the flag and confirm it scores.
 
 ## How to add a new terminal command
 
@@ -120,6 +143,8 @@ Add an entry to `COMMANDS`:
 ```js
 projects: {
   desc: 'Show our current projects',
+  usage: 'projects',
+  examples: ['projects'],
   run: (args) => {
     out('CURRENT PROJECTS', 'warn');
     out('  • Project 1');
@@ -127,7 +152,19 @@ projects: {
   }
 }
 ```
-That's it. It'll appear in `help` and tab-complete. The `args` parameter is the rest of the line split on whitespace. If `run` is `async`, the executor awaits it (used for the `python` command).
+That's it. It'll appear in `help`, `help projects` shows usage/examples, and tab-complete works. The `args` parameter is the rest of the line split on whitespace. If `run` is `async`, the executor awaits it (used for the `python` command).
+
+## Deployment (Cloudflare Workers Static Assets)
+
+- Cloudflare project name: `cybersecurityclub` (matches `name` in `wrangler.jsonc`)
+- Deploy command (Cloudflare dashboard): `npx wrangler versions upload`
+- Production branch: `main` — pushes auto-deploy via Cloudflare's GitHub integration
+- `.assetsignore` excludes `CLAUDE.md`, `README.md`, and `wrangler.jsonc` from the public asset bundle. Dotfiles (`.git/`, `.claude/`, `.gitignore`) are auto-excluded by Cloudflare.
+- `wrangler.jsonc` defaults match what `cloudflare-workers-and-pages[bot]` would auto-generate — keeps the bot from re-proposing the same config later.
+
+To deploy elsewhere:
+- **GitHub Pages, Netlify, Vercel**: just point at the repo. The `wrangler.jsonc` and `.assetsignore` are harmless to other hosts (they'll just sit there unused).
+- **Custom domain**: set in Cloudflare → project → Settings → Custom domains. Update `og:url` in `<head>` to match.
 
 ## Stack reference (if going multi-file later)
 
@@ -138,10 +175,12 @@ That's it. It'll appear in `help` and tab-complete. The `args` parameter is the 
 ## Things to think about before changing
 
 - **Removing the scanline overlay**: Edit `body::before` in CSS. Quick win if it's too intense for an audience.
-- **Switching color schemes**: Change `--accent` and `--accent-dim` at `:root`. Try amber `#ffb454`, cyan `#5fd7ff`, or magenta `#d484ff`.
-- **Hosting**: GitHub Pages, Cloudflare Pages, Netlify, Vercel — all free for a static HTML file. Just push and point.
-- **Adding a backend**: Means leaving the single-file model. Worth doing only if you need persistent state (leaderboards, accounts, real shells). Otherwise stay static.
+- **Switching color schemes**: Change `--accent` and `--accent-dim` at `:root`. Try amber `#ffb454`, cyan `#5fd7ff`, or magenta `#d484ff`. Update the topbar logo + favicon if rebranding away from Oregon Tech.
+- **Adding a backend**: Means leaving the single-file model. Worth doing only if you need persistent state (real leaderboards across browsers, accounts, real shells). Otherwise stay static.
+- **Updating Pyodide**: Test `python` and the CTF challenges that rely on it (#3, #4, #6) before merging.
 
 ## Credits
 
 Visual design inspired by [BeaverHacks](https://beaverhacks.org/) (Oregon State Hackathon Club). Their open-source monorepo is at https://github.com/OregonStateHackathonClub/website.
+
+Owl artwork: Oregon Tech Athletics ("Hootie the Owl" — modernized 2023). Used as topbar logo and favicon.
