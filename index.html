@@ -438,10 +438,12 @@
     <section class="panel">
       <div class="panel-header"><span><span class="panel-header-icon">󰍛</span> Memory</span></div>
       <div class="panel-body">
-        <div class="stat-row"><span class="stat-label">RAM</span><span class="stat-value">26.9K / 64K</span></div>
-        <div class="progress"><div class="progress-fill warn" style="width:42%"></div></div>
-        <div class="stat-row"><span class="stat-label">Swap</span><span class="stat-value">1.9K / 16K</span></div>
-        <div class="progress"><div class="progress-fill" style="width:12%"></div></div>
+        <!-- RAM + Swap values jitter every 1.5s (see the stats setInterval in JS).
+             Initial text below is just a pre-JS fallback; ids let the updater target them. -->
+        <div class="stat-row"><span class="stat-label">RAM</span><span class="stat-value" id="ram-val">7372 MB / 16384 MB</span></div>
+        <div class="progress"><div class="progress-fill warn" id="ram-bar" style="width:45%"></div></div>
+        <div class="stat-row"><span class="stat-label">Swap</span><span class="stat-value" id="swap-val">450 MB / 4096 MB</span></div>
+        <div class="progress"><div class="progress-fill" id="swap-bar" style="width:11%"></div></div>
       </div>
     </section>
     <section class="panel">
@@ -586,6 +588,11 @@
     }).join(' ');
     line.setAttribute('points', pts);
   }
+  // Memory totals — kept as constants so the displayed MB values are derived
+  // from a percentage jitter, not jitter on raw MB. Adjust here to simulate
+  // a different machine size (16 GB RAM + 4 GB swap is a reasonable baseline).
+  const MEM_TOTAL_MB  = 16384;  // 16 GB
+  const SWAP_TOTAL_MB =  4096;  //  4 GB
   setInterval(() => {
     const cpu = jitter(28, 20);
     document.getElementById('cpu-pct').textContent = cpu.toFixed(1)+'%';
@@ -593,6 +600,16 @@
     document.querySelectorAll('[data-core]').forEach(el => {
       el.textContent = Math.floor(jitter(30, 40))+'%';
     });
+    // RAM hovers around 45% (~7.4 GB), small range so it doesn't visibly thrash.
+    const ramPct = jitter(45, 8);
+    const ramMB  = Math.round(ramPct / 100 * MEM_TOTAL_MB);
+    document.getElementById('ram-val').textContent = `${ramMB} MB / ${MEM_TOTAL_MB} MB`;
+    document.getElementById('ram-bar').style.width = ramPct + '%';
+    // Swap stays low — typical for a healthy machine.
+    const swapPct = jitter(11, 4);
+    const swapMB  = Math.round(swapPct / 100 * SWAP_TOTAL_MB);
+    document.getElementById('swap-val').textContent = `${swapMB} MB / ${SWAP_TOTAL_MB} MB`;
+    document.getElementById('swap-bar').style.width = swapPct + '%';
     const netIn = Math.floor(jitterFree(140, 80));
     document.getElementById('net-in').textContent  = netIn+' KB/s';
     document.getElementById('net-out').textContent = Math.floor(jitterFree(60,  40))+' KB/s';
