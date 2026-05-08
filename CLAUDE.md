@@ -5,7 +5,7 @@
 
 ## Overview
 
-A single-file HTML website for the OIT Cybersecurity Club Portland (Oregon Tech's Portland-Metro campus). Terminal-aesthetic UI inspired by [beaverhacks.org](https://beaverhacks.org/). Includes a working in-browser command terminal, simulated system stats, animated UI, SPA-style navigation, and an **8-challenge CTF mode** with a real Python REPL via Pyodide.
+A single-file HTML website for the OIT Cybersecurity Club Portland (Oregon Tech's Portland-Metro campus). Terminal-aesthetic UI inspired by [beaverhacks.org](https://beaverhacks.org/). Includes a working in-browser command terminal, simulated system stats, animated UI, SPA-style navigation, and an **9-challenge CTF mode** with a real Python REPL via Pyodide.
 
 ## Architecture
 
@@ -36,7 +36,7 @@ python3 -m http.server 8000
 ### Configuration block
 - A `CONFIG` object near the top of the first `<script>` block holds all club-specific values: name, officers, advisor, meeting day/time/room, external links, member count.
 - `applyConfig()` runs at boot and syncs DOM elements to those values, so editing `CONFIG` and reloading is enough for routine updates.
-- **Note**: officer count is currently hardcoded at `6` in two places (Recent Activity and Club Info). The `CONFIG.officers` array has 5 officer entries — the 6th is the advisor (`CONFIG.advisor`). If you change the structure, update both display sites.
+- The "officers onboarded" count in Recent Activity reads from `CONFIG.officers.length` automatically — add or remove officer entries and the count adjusts. The advisor (`CONFIG.advisor`) is rendered separately on the contact page and isn't counted as an officer.
 
 ### Layout
 - **Top bar**: Owl logo + brand text on the left; tab nav (`home / about / events / contact / ctf`); CTF score badge + "Join us" button on the right.
@@ -50,7 +50,7 @@ python3 -m http.server 8000
 - The `out(html, cls)` helper writes a line to terminal output. **It uses `innerHTML`** so commands can emit styled markup (`<span class="term-out-info">`). User input is escaped via `escapeHtml()` before display — don't bypass this.
 
 ### CTF system
-- `CHALLENGES` array defines all 8 challenges.
+- `CHALLENGES` array defines all 9 challenges.
 - **Flags are stored as precomputed FNV-1a hex hashes** (e.g. `'778322a0'`), NOT as `fnv1a('flag{...}')` calls. The hashing function is still defined to hash player submissions — but the array contains literal hex strings so View Source can't harvest the answers via the construction code.
 - Challenges 1, 2, 5, 7 *intentionally* have plaintext / fragments / b64 in source — that IS the challenge. Don't remove. See "Hidden flags" below.
 - Challenges 3, 4, 6 are presented as encoded text in the brief itself (player decodes b64 / rot13 / XOR).
@@ -110,6 +110,8 @@ These are *intentionally* visible / discoverable in source — they ARE the chal
 Challenges 3 (base64), 4 (rot13), and 6 (xor) are presented in the terminal itself when the user runs `ctf start <n>`.
 
 Challenge 8 (nmap_recon) is revealed only when the player scans `10.50.0.1` via the `nmap` command. The banner is base64-encoded so `Ctrl+F flag{` doesn't surface it.
+
+Challenge 9 (sql_injection) is revealed only when the player triggers a SQL injection in the `login` command (e.g. `login "admin' --" anything`). The flag is base64-encoded in source and decoded with `atob()` only when the injection regex matches.
 
 Other things:
 - Pyodide version is pinned. Don't bump it without smoke-testing the `python` command afterward.

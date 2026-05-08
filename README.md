@@ -2,13 +2,22 @@
 
 Website for the [OIT Cybersecurity Club Portland](https://theroost.oit.edu/feeds?type=club&type_id=35576&tab=about) — Oregon Tech's Portland-Metro campus cybersecurity / CTF club.
 
-A single-file static site with a working in-browser terminal, a real Python REPL via Pyodide, and an 8-challenge CTF embedded throughout the page.
+A single-file static site with a working in-browser terminal, a real Python REPL via Pyodide, and a 9-challenge CTF embedded throughout the page.
+
+![Home page — desktop](docs/screenshots/home.png)
+
+<details>
+<summary>Mobile view</summary>
+
+![Home page — mobile (375 px)](docs/screenshots/home-mobile.png)
+
+</details>
 
 ## What's inside
 
 - **In-browser terminal** — `help` lists 30+ commands (`nmap`, `ping`, `dig`, `whois`, `tree`, `cowsay`, `neofetch`, etc.). Tab-complete and `↑/↓` history work.
 - **Real Python REPL** — `python` drops you into Pyodide running in WebAssembly. ~10 MB lazy-load on first use.
-- **8-challenge CTF** — recon, console, base64, ROT13, obfuscation, XOR, steganography, nmap_recon. Progress persists in `localStorage`. Run `ctf list` in the page terminal.
+- **9-challenge CTF** — recon, console, base64, ROT13, obfuscation, XOR, steganography, nmap_recon, sql_injection. Progress persists in `localStorage`. Run `ctf list` in the page terminal.
 - **Auto-updating meeting schedule** — events page rolls forward to the next 5 Thursdays automatically.
 - **Oregon Tech Hustlin' Owls branding** — athletics mascot logo + navy/gold palette.
 
