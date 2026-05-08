@@ -41,7 +41,7 @@ For each tab in `['home', 'about', 'events', 'contact', 'ctf']`:
 - Call `switchTab('<name>')` via `preview_eval`
 - Wait 1.5s for typewriter
 - Sample the last ~10 `.term-line.term-out` elements and verify content:
-  - `home`: should contain "CYBERSEC" and "Welcome"
+  - `home`: should contain "Welcome" and "Hustlin'" (note: the "CYBERSEC" banner is block-character ASCII art and isn't literal text in the DOM — don't match against it)
   - `about`: should contain "How to get started" and "Two kinds of meetings"
   - `events`: should contain "events.json" and at least one Thursday date
   - `contact`: should contain "officers.list" and at least one officer name from `CONFIG.officers`
