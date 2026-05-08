@@ -85,7 +85,6 @@ Most placeholders from the original template are now real values. A few remain:
 
 | Placeholder | What it is | Status |
 |---|---|---|
-| `discord.gg/EXAMPLE` | Discord invite | TODO — used in 4+ places |
 | `og:url` content | Deployed URL for social previews | Placeholder; update post-deploy |
 | ASCII art block | Generated at https://patorjk.com/software/taag | Currently shows "CYBERSEC" |
 
