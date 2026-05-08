@@ -55,6 +55,26 @@
 <title>OIT Cybersecurity Club Portland // terminal</title>
 <meta name="description" content="OIT Cybersecurity Club Portland — hands-on security, CTFs, and hacking workshops at Oregon Tech's Portland-Metro campus.">
 
+<!-- Open Graph / Twitter Card: how this URL renders when shared on Discord,
+     Slack, iMessage, LinkedIn, etc. NOTE: social previewers don't run JS,
+     so these values are static — keep them in sync with CONFIG.clubName /
+     CONFIG.description if you edit those. og:url should be set to the
+     deployed URL of this site (the placeholder below works as a default
+     but won't reflect your real host until it's updated). og:image must
+     be an absolute https URL — `data:` URIs are not fetched by social
+     previewers, which is why we can't reuse the embedded favicon here. -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="OIT Cybersecurity Club Portland">
+<meta property="og:title" content="OIT Cybersecurity Club Portland">
+<meta property="og:description" content="Hands-on security, CTFs, and hacking workshops at Oregon Tech's Portland-Metro campus.">
+<meta property="og:url" content="https://barterclub.github.io/CybersecurityClub/">
+<meta property="og:image" content="https://oregontechowls.com/images/logos/site/site.png">
+<meta property="og:image:alt" content="Oregon Tech Owls — owl mascot logo">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="OIT Cybersecurity Club Portland">
+<meta name="twitter:description" content="Hands-on security, CTFs, and hacking workshops at Oregon Tech's Portland-Metro campus.">
+<meta name="twitter:image" content="https://oregontechowls.com/images/logos/site/site.png">
+
 <!-- Favicon: Oregon Tech "Hootie" owl head, 32x32 PNG, base64-embedded so the
      site stays single-file. Source: oregontechowls.com (athletics primary mark). -->
 <link rel="icon" type="image/png" href="data:image/png;base64,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">
