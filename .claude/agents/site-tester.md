@@ -45,7 +45,7 @@ For each tab in `['home', 'about', 'events', 'contact', 'ctf']`:
   - `about`: should contain "How to get started" and "Two kinds of meetings"
   - `events`: should contain "events.json" and at least one Thursday date
   - `contact`: should contain "officers.list" and at least one officer name from `CONFIG.officers`
-  - `ctf`: should contain "9 challenges" and "sql_injection"
+  - `ctf`: should contain "10 challenges" and "jwt_tamper"
 
 PASS if all 5 tabs match. FAIL each tab that doesn't.
 
@@ -82,6 +82,7 @@ The known flags (do not reveal in normal output, only on failure):
 7: flag{css_data_attrs_are_visible}
 8: flag{nmap_finds_what_eyes_miss}
 9: flag{sql_injection_is_classic}
+10: flag{none_alg_strikes_again}
 ```
 
 If any flag fails to score, the most likely culprit is a hash mismatch — the `CHALLENGES[id-1].hash` no longer matches `fnv1a('<flag>')`. Report which challenge ID and what its current `hash` value is so the maintainer can recompute.
@@ -128,10 +129,11 @@ Use `Grep` on `index.html` searching for the literal flag strings:
 - `flag{xor_is_just_addition_mod_2}` — should NOT appear
 - `flag{nmap_finds_what_eyes_miss}` — should NOT appear
 - `flag{sql_injection_is_classic}` — should NOT appear
+- `flag{none_alg_strikes_again}` — should NOT appear
 
 The intentionally-visible flags (#1, #2, #5, #7) are confirmed present elsewhere — don't audit those.
 
-PASS if all 5 obfuscated flags are absent. FAIL with the line numbers where any leaked.
+PASS if all 6 obfuscated flags are absent. FAIL with the line numbers where any leaked.
 
 # Report format
 

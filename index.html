@@ -665,6 +665,27 @@
     return h.toString(16).padStart(8, '0');
   }
 
+  /* ============================================================
+     JWT helpers — used by CTF #10 (jwt_tamper) commands.
+     base64url is base64 with `+/` → `-_` and stripped padding.
+     _hmacFake stands in for an HMAC-SHA256 — the real point of the
+     challenge isn't cracking the secret, it's exploiting alg=none
+     in the verifier (`whoami-jwt` accepts unsigned tokens).
+     ============================================================ */
+  function _b64urlEncode(str) {
+    return btoa(unescape(encodeURIComponent(str)))
+      .replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_');
+  }
+  function _b64urlDecode(s) {
+    s = String(s || '').replace(/-/g, '+').replace(/_/g, '/');
+    while (s.length % 4) s += '=';
+    try { return decodeURIComponent(escape(atob(s))); }
+    catch (_) { return atob(s); }
+  }
+  function _hmacFake(h, p) {
+    return fnv1a(h + '.' + p + '|oit-cybersec-secret');
+  }
+
   // NOTE: hashes are PRECOMPUTED with fnv1a() and pasted in as hex strings.
   // We deliberately don't call `fnv1a('flag{...}')` here — that would put
   // the plaintext flag in the page source for anyone with View Source.
@@ -706,7 +727,11 @@
     { id:9, name:'sql_injection',  points:150,
       brief:"There's a `login` command on this terminal that talks to a `users` table. The query string is printed before each attempt — read it carefully. Classic SQLi will get you in.",
       hint:"Run `login admin password` and look at the SQL it prints. The username is interpolated unsanitized — `login admin'-- anything` will close the quote and comment out the password check. Or try `login admin' OR '1'='1 anything`. The flag is in the admin row that gets returned.",
-      hash: 'f7c7c45b' }
+      hash: 'f7c7c45b' },
+    { id:10, name:'jwt_tamper',    points:175,
+      brief:"There's a `token` command that issues JWTs and a `whoami-jwt` command that authenticates them. Tokens carry role=user. The admin debug-note holds the flag — forge your way in.",
+      hint:"Use `jwt-decode <token>` to inspect any token. The HS256 signature on server-issued tokens won't budge — but the verifier accepts a second algorithm. Read RFC 7519 §6.1 about `alg: none`. Build a token with header alg=none, payload role=admin, and an empty signature (just leave nothing after the second dot). Use `python` for base64url-encoding (base64.urlsafe_b64encode + strip padding).",
+      hash: 'fe5284ab' }
   ];
   // ---- Obfuscated flag #5 (read carefully) ----
   const _x1 = 'flag{';
@@ -1030,7 +1055,7 @@ _text
     const g = printGen;
     await slow('# ctf.md', 'mag', g);
     await slowBlank(g);
-    await slow('Welcome to the warm-up CTF. <span class="term-out-mag">9 challenges</span> hidden across this site. All client-side, all solvable from the terminal.', '', g);
+    await slow('Welcome to the warm-up CTF. <span class="term-out-mag">10 challenges</span> hidden across this site. All client-side, all solvable from the terminal.', '', g);
     await slowBlank(g);
     await slow('Run <span class="term-out-ok">ctf list</span> to see them, then <span class="term-out-ok">ctf start &lt;n&gt;</span> for any challenge. Submit with <span class="term-out-ok">flag &lt;text&gt;</span>.', 'dim', g);
     await slowBlank(g);
@@ -1043,6 +1068,7 @@ _text
     await slow('  <span class="term-out-mag">▸</span> steganography — sometimes data hides in plain sight', '', g);
     await slow('  <span class="term-out-mag">▸</span> nmap_recon — services talk too much (try the <span class="term-out-ok">nmap</span> command)', '', g);
     await slow('  <span class="term-out-mag">▸</span> sql_injection — read the SQL the <span class="term-out-ok">login</span> command prints, break the WHERE clause', '', g);
+    await slow('  <span class="term-out-mag">▸</span> jwt_tamper — issue with <span class="term-out-ok">token</span>, inspect with <span class="term-out-ok">jwt-decode</span>, forge with alg=none, present to <span class="term-out-ok">whoami-jwt</span>', '', g);
     await slowBlank(g);
     await slow('Type <span class="term-out-ok">hint &lt;n&gt;</span> if stuck. Type <span class="term-out-ok">score</span> for progress. Run <span class="term-out-ok">ctf reset</span> to wipe saved state.', 'dim', g);
     await slow('Progress is saved in this browser via localStorage — survives reloads, but not incognito or other browsers.', 'dim', g);
@@ -1093,7 +1119,7 @@ _text
       // ---- Full categorized list ----
       const cats = {
         'Pages':     ['home','about','events','contact','ctf'],
-        'Network':   ['nmap','ping','dig','whois','traceroute','ifconfig','netstat','curl','ssh','login'],
+        'Network':   ['nmap','ping','dig','whois','traceroute','ifconfig','netstat','curl','ssh','login','token','jwt-decode','whoami-jwt'],
         'Filesystem':['ls','cat','tree','df','pwd'],
         'System':    ['whoami','uname','date','uptime','history','echo','neofetch'],
         'Tools':     ['base64','rot13','hash','python','py','fortune','cowsay','banner'],
@@ -1516,6 +1542,91 @@ _text
       out(`Authentication failed: invalid credentials`, 'err');
       out(`  hint: the SQL printed above is built by string concatenation.`, 'dim');
       out(`  hint: in real attacks, that pattern is exploitable. (CTF #9)`, 'dim');
+    }},
+
+    /* CTF #10 — JWT alg=none. `token` issues a fake-HMAC-signed token; the
+       verifier `whoami-jwt` accepts BOTH HS256 (with the deterministic fake
+       HMAC) AND alg=none with an empty signature — the classic vulnerability.
+       Player must forge a token with alg=none and role=admin to reveal the
+       admin debug-note (the flag). The flag literal is base64-encoded so
+       View Source doesn't surface it. */
+    token: { desc:'Issue a JWT for a username (simulated)',
+      usage: 'token <username>',
+      examples: ['token alice', 'token bob'],
+      notes: 'All issued tokens carry role=user. To see the admin debug-note in whoami-jwt, you will need to forge a token. Hint: read up on JWT alg=none.',
+      run: (a) => {
+      const user = (a[0] || 'guest').slice(0, 32);
+      const header  = { alg: 'HS256', typ: 'JWT' };
+      const payload = { user, role: 'user', iat: Math.floor(Date.now()/1000) };
+      const h = _b64urlEncode(JSON.stringify(header));
+      const p = _b64urlEncode(JSON.stringify(payload));
+      const sig = _hmacFake(h, p);
+      const tok = `${h}.${p}.${sig}`;
+      out(`Issued JWT for <span class="term-out-info">${escapeHtml(user)}</span>:`);
+      out(`  <span class="term-out-info">${escapeHtml(tok)}</span>`);
+      blank();
+      out(`Inspect with \`jwt-decode &lt;token&gt;\`. Authenticate with \`whoami-jwt &lt;token&gt;\`.`, 'dim');
+    }},
+
+    'jwt-decode': { desc:'Decode and pretty-print a JWT (no verification)',
+      usage: 'jwt-decode <token>',
+      examples: ['jwt-decode eyJhbGciOiJIUzI1NiJ9.eyJ1c2VyIjoiYWxpY2UifQ.sig'],
+      notes: 'Read-only. Does not check the signature.',
+      run: (a) => {
+      const tok = (a[0] || '').trim();
+      if (!tok) return out('usage: jwt-decode &lt;token&gt;', 'err');
+      const parts = tok.split('.');
+      if (parts.length !== 3) return out('not a JWT (expected 3 dot-separated parts)', 'err');
+      let header, payload;
+      try { header  = JSON.parse(_b64urlDecode(parts[0])); }
+      catch (e) { return out('header decode failed: ' + escapeHtml(e.message), 'err'); }
+      try { payload = JSON.parse(_b64urlDecode(parts[1])); }
+      catch (e) { return out('payload decode failed: ' + escapeHtml(e.message), 'err'); }
+      out(`<span class="term-out-warn">header:</span>    ${escapeHtml(JSON.stringify(header))}`);
+      out(`<span class="term-out-warn">payload:</span>   ${escapeHtml(JSON.stringify(payload))}`);
+      out(`<span class="term-out-warn">signature:</span> ${escapeHtml(parts[2] || '(empty)')}`);
+    }},
+
+    'whoami-jwt': { desc:'Authenticate with a JWT (simulated server)',
+      usage: 'whoami-jwt <token>',
+      examples: ['whoami-jwt <paste-token-here>'],
+      notes: 'Returns the role-gated admin debug-note when role=admin.',
+      run: (a) => {
+      const tok = (a[0] || '').trim();
+      if (!tok) return out('usage: whoami-jwt &lt;token&gt;', 'err');
+      const parts = tok.split('.');
+      if (parts.length !== 3) return out('malformed token (expected 3 dot-separated parts)', 'err');
+      let header, payload;
+      try {
+        header  = JSON.parse(_b64urlDecode(parts[0]));
+        payload = JSON.parse(_b64urlDecode(parts[1]));
+      } catch (e) { return out('decode error: ' + escapeHtml(e.message), 'err'); }
+      out(`<span class="term-out-dim">[debug] alg = ${escapeHtml(String(header.alg))}</span>`);
+
+      // Verifier — accepts HS256 with our fake HMAC, OR alg=none with empty sig.
+      // The intended exploit is alg=none.
+      let sigOk = false;
+      if (header.alg === 'none') {
+        sigOk = !parts[2];
+      } else if (header.alg === 'HS256') {
+        sigOk = parts[2] === _hmacFake(parts[0], parts[1]);
+      }
+      if (!sigOk) {
+        out(`✗ signature verification failed (alg=${escapeHtml(String(header.alg))})`, 'err');
+        return;
+      }
+      out(`<span class="term-out-ok">✓ signature accepted (alg=${escapeHtml(String(header.alg))})</span>`);
+      out(`Hello, <span class="term-out-info">${escapeHtml(String(payload.user || 'anonymous'))}</span> (role: ${escapeHtml(String(payload.role || 'user'))})`);
+
+      if (payload.role === 'admin') {
+        const _flag = atob('ZmxhZ3tub25lX2FsZ19zdHJpa2VzX2FnYWlufQ==');
+        blank();
+        out(`<span class="term-out-mag">═══ ADMIN DEBUG PANEL ═══</span>`);
+        out(`  debug-note: <span class="term-out-mag">${escapeHtml(_flag)}</span>`);
+        out(`|_ submit the note value with \`flag &lt;text&gt;\``, 'dim');
+      } else {
+        out(`(non-admins don't see the debug-note)`, 'dim');
+      }
     }},
 
     /* ============================================================

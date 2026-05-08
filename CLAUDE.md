@@ -5,7 +5,7 @@
 
 ## Overview
 
-A single-file HTML website for the OIT Cybersecurity Club Portland (Oregon Tech's Portland-Metro campus). Terminal-aesthetic UI inspired by [beaverhacks.org](https://beaverhacks.org/). Includes a working in-browser command terminal, simulated system stats, animated UI, SPA-style navigation, and an **9-challenge CTF mode** with a real Python REPL via Pyodide.
+A single-file HTML website for the OIT Cybersecurity Club Portland (Oregon Tech's Portland-Metro campus). Terminal-aesthetic UI inspired by [beaverhacks.org](https://beaverhacks.org/). Includes a working in-browser command terminal, simulated system stats, animated UI, SPA-style navigation, and an **10-challenge CTF mode** with a real Python REPL via Pyodide.
 
 ## Architecture
 
@@ -50,7 +50,7 @@ python3 -m http.server 8000
 - The `out(html, cls)` helper writes a line to terminal output. **It uses `innerHTML`** so commands can emit styled markup (`<span class="term-out-info">`). User input is escaped via `escapeHtml()` before display — don't bypass this.
 
 ### CTF system
-- `CHALLENGES` array defines all 9 challenges.
+- `CHALLENGES` array defines all 10 challenges.
 - **Flags are stored as precomputed FNV-1a hex hashes** (e.g. `'778322a0'`), NOT as `fnv1a('flag{...}')` calls. The hashing function is still defined to hash player submissions — but the array contains literal hex strings so View Source can't harvest the answers via the construction code.
 - Challenges 1, 2, 5, 7 *intentionally* have plaintext / fragments / b64 in source — that IS the challenge. Don't remove. See "Hidden flags" below.
 - Challenges 3, 4, 6 are presented as encoded text in the brief itself (player decodes b64 / rot13 / XOR).
@@ -119,6 +119,8 @@ Challenges 3 (base64), 4 (rot13), and 6 (xor) are presented in the terminal itse
 Challenge 8 (nmap_recon) is revealed only when the player scans `10.50.0.1` via the `nmap` command. The banner is base64-encoded so `Ctrl+F flag{` doesn't surface it.
 
 Challenge 9 (sql_injection) is revealed only when the player triggers a SQL injection in the `login` command (e.g. `login "admin' --" anything`). The flag is base64-encoded in source and decoded with `atob()` only when the injection regex matches.
+
+Challenge 10 (jwt_tamper) is revealed by `whoami-jwt` only when the presented token has `payload.role === 'admin'` AND passes signature verification. The verifier intentionally accepts `alg=none` with an empty signature — the classic JWT vulnerability — so the player must forge a token rather than crack the fake HS256 HMAC. The flag is base64-encoded in source and decoded with `atob()` only inside the role=admin branch.
 
 Other things:
 - Pyodide version is pinned. Don't bump it without smoke-testing the `python` command afterward.
