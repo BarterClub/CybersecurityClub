@@ -169,8 +169,26 @@ That's it. It'll appear in `help`, `help projects` shows usage/examples, and tab
 - Cloudflare project name: `cybersecurityclub` (matches `name` in `wrangler.jsonc`)
 - Deploy command (Cloudflare dashboard): `npx wrangler versions upload`
 - Production branch: `main` — pushes auto-deploy via Cloudflare's GitHub integration
-- `.assetsignore` excludes `CLAUDE.md`, `README.md`, and `wrangler.jsonc` from the public asset bundle. Dotfiles (`.git/`, `.claude/`, `.gitignore`) are auto-excluded by Cloudflare.
+- `.assetsignore` excludes `CLAUDE.md`, `README.md`, `wrangler.jsonc`, `src/`, and `docs/` from the public asset bundle. Dotfiles (`.git/`, `.claude/`, `.gitignore`) are auto-excluded by Cloudflare.
 - `wrangler.jsonc` defaults match what `cloudflare-workers-and-pages[bot]` would auto-generate — keeps the bot from re-proposing the same config later.
+
+### Worker (`src/worker.js`) + KV
+
+The deploy is no longer pure-static. `src/worker.js` is a small Cloudflare Worker that handles two API routes and falls through to static assets for everything else:
+- `GET  /api/stats` → `{ total: <int> }` — current global flag-capture counter
+- `POST /api/solve` → `{ flag: string }` → re-hashes (FNV-1a) the submitted flag, verifies against the known-good hash list, increments and returns the counter when valid
+
+Server-side re-hashing is the security boundary: a curl spammer can't inflate the counter without actually knowing a real flag. The hash list duplicates the values in `CHALLENGES` (in `index.html`) intentionally — keep them in sync when adding/rotating challenges.
+
+Storage is a single Cloudflare Workers KV namespace bound as `STATS`, key `total_solves` (string-encoded int). KV is eventually consistent; for a club-scale counter, occasional duplicate / lost increments are acceptable. If precision ever matters, swap to a Durable Object.
+
+To rotate the KV namespace:
+```
+npx wrangler kv namespace create STATS
+```
+Paste the printed `id` into `wrangler.jsonc` → `kv_namespaces[0].id`.
+
+`index.html` calls `/api/stats` at boot and shows the count under the `[ OK ] CTF subsystem ready` line in the boot animation. The flag command POSTs to `/api/solve` after a successful local solve so the global counter increments. Both calls fail silently if the API is unreachable (e.g. local `python -m http.server` preview); the boot line removes itself rather than sitting at `…`.
 
 To deploy elsewhere:
 - **GitHub Pages, Netlify, Vercel**: just point at the repo. The `wrangler.jsonc` and `.assetsignore` are harmless to other hosts (they'll just sit there unused).

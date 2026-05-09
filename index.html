@@ -1328,6 +1328,16 @@ _text
       addActivity('ok', `flag captured: <span class="term-out-mag">#${match.id} ${match.name}</span> +${match.points}pts`);
       out(`✓ CORRECT! Challenge #${match.id} (${match.name}) — +${match.points}pts`, 'ok');
       updateScoreUI();
+      // Best-effort: tell the global counter on the Worker. Server re-hashes
+      // and verifies before incrementing, so this can't be used to inflate.
+      // Fire-and-forget — failure (e.g. local-only preview, no network) is fine.
+      fetch('/api/solve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ flag: submission }),
+      }).then(r => r.ok ? r.json() : null).then(d => {
+        if (d && typeof d.total === 'number') updateBootSolves(d.total);
+      }).catch(() => {});
       if (ctfState.solved.size === CHALLENGES.length) {
         blank();
         out('  ╔══════════════════════════════════════════╗', 'mag');
@@ -2006,16 +2016,26 @@ ${bot}
       ['[ OK ] started network manager', 'ok'],
       ['[ OK ] started session for user hacker', 'ok'],
       ['[ OK ] CTF subsystem ready: '+CHALLENGES.length+' challenges loaded', 'ok'],
+      // Live counter — fetched from /api/stats at boot. The placeholder span
+      // gets its textContent replaced when the fetch resolves; if the API is
+      // unreachable, we hide the line entirely so it doesn't sit there as `…`.
+      [`[INFO] <span id="boot-solves">…</span> flags captured across all sessions`, 'info'],
       ['', '']
     ];
     let i = 0;
     const tick = () => {
       if (i >= lines.length) {
+        // Final attempt in case the fetch resolved during the last setTimeout.
+        if (typeof applyBootSolves === 'function') applyBootSolves();
         printPage('home');
         return;
       }
       const [t, c] = lines[i++];
       if (t) out(t, c); else blank();
+      // After each line prints, retry the live-stats apply. Once the
+      // #boot-solves placeholder is rendered, this no-ops on subsequent
+      // calls (the element either gets its number or gets removed).
+      if (typeof applyBootSolves === 'function') applyBootSolves();
       setTimeout(tick, REDUCED_MOTION ? 0 : 100);
     };
     tick();
@@ -2123,6 +2143,42 @@ ${bot}
     img.src = `https://api.qrserver.com/v1/create-qr-code/?size=480x480&margin=0&data=${encodeURIComponent(CONFIG.qrTargetUrl)}`;
     widget.hidden = false;
   }
+
+  /* ============================================================
+     LIVE STATS — fetch the global flag-capture count from the
+     Cloudflare Worker at /api/stats and show it under the boot
+     line. Gracefully degrades if the API is unreachable (e.g.
+     during local file:// or python -m http.server preview):
+     the boot line silently disappears.
+
+     Race detail: the boot animation prints lines with setTimeout,
+     so the #boot-solves placeholder doesn't exist until ~600ms in.
+     The fetch usually resolves first. We store the result in
+     `_bootSolvesValue` and apply it whenever both (a) we have a
+     value and (b) the element has been rendered. boot()'s tick
+     calls applyBootSolves() after every line so the "render is
+     ready" half of the race is checked frequently.
+     ============================================================ */
+  let _bootSolvesValue = undefined;  // undefined = pending; null = failed; number = ok
+  function applyBootSolves() {
+    const el = document.getElementById('boot-solves');
+    if (!el || _bootSolvesValue === undefined) return;
+    if (_bootSolvesValue === null) {
+      const line = el.closest('.term-line');
+      if (line) line.remove();
+    } else {
+      el.textContent = _bootSolvesValue.toLocaleString();
+    }
+  }
+  function updateBootSolves(n) {
+    _bootSolvesValue = (typeof n === 'number' && isFinite(n)) ? n : null;
+    applyBootSolves();
+  }
+  fetch('/api/stats')
+    .then(r => r.ok ? r.json() : Promise.reject(r.status))
+    .then(d => updateBootSolves(d && typeof d.total === 'number' ? d.total : null))
+    .catch(() => updateBootSolves(null));
+
   boot();
 </script>
 

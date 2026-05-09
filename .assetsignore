@@ -11,5 +11,8 @@ wrangler.jsonc
 wrangler-qr.jsonc
 wrangler.toml
 
+# Worker source — uploaded as the Worker entry, not as a public static file
+src/
+
 # README screenshots — for the GitHub repo page, not the live site
 docs/

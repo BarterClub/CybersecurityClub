@@ -26,12 +26,20 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "cybersecurityclub",
   "compatibility_date": "2026-05-07",
+  "main": "src/worker.js",
   "observability": {
     "enabled": true
   },
   "assets": {
-    "directory": "."
+    "directory": ".",
+    "binding": "ASSETS"
   },
+  "kv_namespaces": [
+    {
+      "binding": "STATS",
+      "id": "4e2136877ad141eebd0f96a1798b20d3"
+    }
+  ],
   "compatibility_flags": [
     "nodejs_compat"
   ]
