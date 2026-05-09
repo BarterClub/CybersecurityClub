@@ -2215,6 +2215,22 @@ ${bot}
     .then(d => updateBootSolves(d && typeof d.total === 'number' ? d.total : null))
     .catch(() => updateBootSolves(null));
 
+  // Periodic refresh so the kiosk QR widget + boot line + sidebar count
+  // stay live without a full page reload (which would lose scroll position,
+  // python REPL state, and terminal history for anyone actively using the
+  // site). One hour is enough motion for a passive display.
+  // On poll failure we leave the existing value alone instead of degrading
+  // to null — a transient API hiccup shouldn't make the line disappear.
+  const STATS_POLL_MS = 60 * 60 * 1000;
+  setInterval(() => {
+    fetch('/api/stats')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (d && typeof d.total === 'number') updateBootSolves(d.total);
+      })
+      .catch(() => {});
+  }, STATS_POLL_MS);
+
   boot();
 </script>
 
