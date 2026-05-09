@@ -387,10 +387,19 @@
     text-align: center;
   }
   .qr-widget-label .qr-arrow { color: var(--text-dim); margin: 0 4px; }
+  /* Live solve count below the scan→site label. JS unhides this line only
+     when /api/stats answers — otherwise it stays hidden so the kiosk
+     widget doesn't show "…" forever on offline previews. */
+  .qr-widget-stat {
+    font-family: 'JetBrains Mono', monospace; font-size: 11px;
+    color: var(--text-dim); text-align: center;
+  }
+  .qr-widget-stat strong { color: var(--accent); font-weight: 700; }
   @media (max-width: 720px) {
     .qr-widget { bottom: 38px; right: 8px; padding: 8px; }
     .qr-widget img { width: 160px; height: 160px; padding: 6px; }
     .qr-widget-label { font-size: 10px; }
+    .qr-widget-stat { font-size: 9px; }
   }
 
   /* STATUS BAR */
@@ -611,6 +620,7 @@
 <aside id="qr-widget" class="qr-widget" hidden aria-label="QR code linking to the main site">
   <img id="qr-widget-img" alt="" width="240" height="240">
   <div class="qr-widget-label">scan<span class="qr-arrow">→</span>site</div>
+  <div class="qr-widget-stat" id="qr-solves-line" hidden><strong id="qr-solves">…</strong> flags captured</div>
 </aside>
 
 <script>
@@ -2175,13 +2185,25 @@ ${bot}
      ============================================================ */
   let _bootSolvesValue = undefined;  // undefined = pending; null = failed; number = ok
   function applyBootSolves() {
-    const el = document.getElementById('boot-solves');
-    if (!el || _bootSolvesValue === undefined) return;
-    if (_bootSolvesValue === null) {
-      const line = el.closest('.term-line');
-      if (line) line.remove();
-    } else {
-      el.textContent = _bootSolvesValue.toLocaleString();
+    if (_bootSolvesValue === undefined) return;
+    // Boot-line placeholder (under "[ OK ] CTF subsystem ready" in the boot animation)
+    const bootEl = document.getElementById('boot-solves');
+    if (bootEl) {
+      if (_bootSolvesValue === null) {
+        const line = bootEl.closest('.term-line');
+        if (line) line.remove();
+      } else {
+        bootEl.textContent = _bootSolvesValue.toLocaleString();
+      }
+    }
+    // QR widget — kiosk-only stats line under the scan→site label.
+    // Unhidden only when we have a real number; stays hidden on API failure
+    // so the kiosk widget doesn't show "…" indefinitely.
+    const qrEl     = document.getElementById('qr-solves');
+    const qrLine   = document.getElementById('qr-solves-line');
+    if (qrEl && qrLine && typeof _bootSolvesValue === 'number') {
+      qrEl.textContent = _bootSolvesValue.toLocaleString();
+      qrLine.hidden = false;
     }
   }
   function updateBootSolves(n) {
