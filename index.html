@@ -377,20 +377,20 @@
   }
   .qr-widget[hidden] { display: none; }
   .qr-widget img {
-    display: block; width: 140px; height: 140px;
-    background: #fff; padding: 6px; box-sizing: content-box;
+    display: block; width: 240px; height: 240px;
+    background: #fff; padding: 10px; box-sizing: content-box;
     image-rendering: pixelated;
   }
   .qr-widget-label {
-    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    font-family: 'JetBrains Mono', monospace; font-size: 12px;
     color: var(--accent); letter-spacing: .08em; text-transform: uppercase;
     text-align: center;
   }
   .qr-widget-label .qr-arrow { color: var(--text-dim); margin: 0 4px; }
   @media (max-width: 720px) {
-    .qr-widget { bottom: 38px; right: 8px; padding: 6px; }
-    .qr-widget img { width: 96px; height: 96px; padding: 4px; }
-    .qr-widget-label { font-size: 9px; }
+    .qr-widget { bottom: 38px; right: 8px; padding: 8px; }
+    .qr-widget img { width: 160px; height: 160px; padding: 6px; }
+    .qr-widget-label { font-size: 10px; }
   }
 
   /* STATUS BAR */
@@ -609,7 +609,7 @@
      See setupQrWidget() in JS for the gating logic and CONFIG.qrTargetUrl
      for what the QR encodes. -->
 <aside id="qr-widget" class="qr-widget" hidden aria-label="QR code linking to the main site">
-  <img id="qr-widget-img" alt="" width="140" height="140">
+  <img id="qr-widget-img" alt="" width="240" height="240">
   <div class="qr-widget-label">scan<span class="qr-arrow">→</span>site</div>
 </aside>
 
@@ -2120,7 +2120,7 @@ ${bot}
     const img = document.getElementById('qr-widget-img');
     img.alt = `QR code: ${CONFIG.qrTargetUrl}`;
     img.onerror = () => { widget.hidden = true; };
-    img.src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&margin=0&data=${encodeURIComponent(CONFIG.qrTargetUrl)}`;
+    img.src = `https://api.qrserver.com/v1/create-qr-code/?size=480x480&margin=0&data=${encodeURIComponent(CONFIG.qrTargetUrl)}`;
     widget.hidden = false;
   }
   boot();
