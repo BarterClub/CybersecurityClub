@@ -8,6 +8,12 @@
   // Both deploys serve the IDENTICAL index.html — the QR widget reveals itself
   // at runtime by checking location.hostname (see setupQrWidget() in index.html).
   //
+  // BOTH deploys ALSO run the same `src/worker.js` and bind to the SAME
+  // `STATS` KV namespace. That's what lets the kiosk QR widget show the same
+  // global solve count as the production site — both Workers read and write
+  // the same `total_solves` key. KV namespaces are account-scoped, so two
+  // Workers binding to the same id is fine and intentional.
+  //
   // For this Cloudflare project, override the deploy command in the dashboard:
   //   Workers & Pages → cybersecurityclub-qr → Settings → Build → Deploy command:
   //     npx wrangler versions upload --config wrangler-qr.jsonc
@@ -17,12 +23,20 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "cybersecurityclub-qr",
   "compatibility_date": "2026-05-07",
+  "main": "src/worker.js",
   "observability": {
     "enabled": true
   },
   "assets": {
-    "directory": "."
+    "directory": ".",
+    "binding": "ASSETS"
   },
+  "kv_namespaces": [
+    {
+      "binding": "STATS",
+      "id": "4e2136877ad141eebd0f96a1798b20d3"
+    }
+  ],
   "compatibility_flags": [
     "nodejs_compat"
   ]

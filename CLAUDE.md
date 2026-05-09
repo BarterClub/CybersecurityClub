@@ -186,9 +186,11 @@ To rotate the KV namespace:
 ```
 npx wrangler kv namespace create STATS
 ```
-Paste the printed `id` into `wrangler.jsonc` → `kv_namespaces[0].id`.
+Paste the printed `id` into BOTH `wrangler.jsonc` AND `wrangler-qr.jsonc` → `kv_namespaces[0].id`. Both deploys must point at the same namespace so the kiosk QR display and the production site agree on the count.
 
-`index.html` calls `/api/stats` at boot and shows the count under the `[ OK ] CTF subsystem ready` line in the boot animation. The flag command POSTs to `/api/solve` after a successful local solve so the global counter increments. Both calls fail silently if the API is unreachable (e.g. local `python -m http.server` preview); the boot line removes itself rather than sitting at `…`.
+**Both Workers run the same `src/worker.js`** and bind to the same `STATS` namespace. KV is account-scoped, so two Workers binding to the same id is fine and intentional — it's how the kiosk gets a live count from the same backing store the production site writes to.
+
+`index.html` calls `/api/stats` at boot and shows the count under the `[ OK ] CTF subsystem ready` line in the boot animation. It also surfaces the count on the home + CTF tabs (via `slowSolveCount()`) and in the QR widget (`#qr-solves`). A 1-hour `setInterval` re-polls `/api/stats` so kiosk displays stay current without a full page reload. The flag command POSTs to `/api/solve` after a successful local solve so the global counter increments. All API calls fail silently if unreachable (e.g. local `python -m http.server` preview); placeholders are hidden rather than sitting at `…`.
 
 To deploy elsewhere:
 - **GitHub Pages, Netlify, Vercel**: just point at the repo. The `wrangler.jsonc` and `.assetsignore` are harmless to other hosts (they'll just sit there unused).
