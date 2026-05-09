@@ -55,13 +55,17 @@
       discord: 'https://discord.gg/bJ2ZjDKhtT',
     },
 
-    // --- QR widget (only shown on the *.workers.dev "kiosk" deploy) ---
+    // --- QR widget (only shown on the kiosk deploy) ---
     // The site has two deploys from the same repo:
-    //   1. Custom domain (real public site) — QR widget is HIDDEN here
-    //   2. *.workers.dev URL (kiosk / flyer / "scan to visit" version) — QR widget is SHOWN here
-    // Set qrTargetUrl to the URL the QR should encode (typically the custom domain).
+    //   1. Production Worker `cybersecurityclub` (or its custom domain) — QR HIDDEN
+    //   2. Kiosk Worker `cybersecurityclub-qr` (.workers.dev or custom) — QR SHOWN
+    // Gating is done by hostname prefix below — the QR widget appears only when
+    // location.hostname STARTS WITH `qrShowHostnamePrefix`. Both Workers live at
+    // .workers.dev URLs by default, so a generic ".workers.dev" check would
+    // match BOTH; we use the unique subdomain prefix instead.
     // Override locally with `?qr=1` (force show) or `?qr=0` (force hide).
-    qrTargetUrl: 'https://cybersecurityclub.example.com',  // TODO: set to your custom domain
+    qrTargetUrl: 'https://cybersecurityclub.example.com',  // TODO: set to your custom/production URL
+    qrShowHostnamePrefix: 'cybersecurityclub-qr',          // matches cybersecurityclub-qr.<account>.workers.dev
   };
   // Helper: strip the http(s):// prefix when displaying a URL
   const _u = (u) => u.replace(/^https?:\/\//, '');
@@ -2111,7 +2115,7 @@ ${bot}
     let show;
     if (param === '1') show = true;
     else if (param === '0') show = false;
-    else show = location.hostname.endsWith('.workers.dev');
+    else show = !!CONFIG.qrShowHostnamePrefix && location.hostname.startsWith(CONFIG.qrShowHostnamePrefix);
     if (!show || !CONFIG.qrTargetUrl) return;
     const img = document.getElementById('qr-widget-img');
     img.alt = `QR code: ${CONFIG.qrTargetUrl}`;
