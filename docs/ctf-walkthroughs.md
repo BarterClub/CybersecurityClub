@@ -4,7 +4,7 @@ Spoilers ahead. These are the "I'm stuck, just show me" answers — every challe
 
 > Each challenge writeup is sized to fit under Discord's 2000-char message limit, so you can copy a block straight into a message.
 
-Run every command below in the page terminal at <https://barterclub.github.io/CybersecurityClub/> (or wherever the site lives). Type `ctf reset` first if you want a clean slate.
+Run every command below in the page terminal at <https://cybersecurityclub.scott-reinholtz.workers.dev/>. Type `ctf reset` first if you want a clean slate.
 
 ---
 

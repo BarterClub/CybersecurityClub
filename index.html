@@ -64,7 +64,7 @@
     // .workers.dev URLs by default, so a generic ".workers.dev" check would
     // match BOTH; we use the unique subdomain prefix instead.
     // Override locally with `?qr=1` (force show) or `?qr=0` (force hide).
-    qrTargetUrl: 'https://cybersecurityclub.example.com',  // TODO: set to your custom/production URL
+    qrTargetUrl: 'https://cybersecurityclub.scott-reinholtz.workers.dev/',  // Cloudflare Worker URL — swap to a custom domain (e.g. cybersec.oit.edu) when you have one
     qrShowHostnamePrefix: 'cybersecurityclub-qr',          // matches cybersecurityclub-qr.<account>.workers.dev
   };
   // Helper: strip the http(s):// prefix when displaying a URL
@@ -90,7 +90,7 @@
 <meta property="og:site_name" content="OIT Cybersecurity Club Portland">
 <meta property="og:title" content="OIT Cybersecurity Club Portland">
 <meta property="og:description" content="Hands-on security, CTFs, and hacking workshops at Oregon Tech's Portland-Metro campus.">
-<meta property="og:url" content="https://barterclub.github.io/CybersecurityClub/">
+<meta property="og:url" content="https://cybersecurityclub.scott-reinholtz.workers.dev/">
 <meta property="og:image" content="https://oregontechowls.com/images/logos/site/site.png">
 <meta property="og:image:alt" content="Oregon Tech Owls — owl mascot logo">
 <meta name="twitter:card" content="summary">

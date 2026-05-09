@@ -72,7 +72,7 @@ python3 -m http.server 8000
 - `<meta property="og:*">` and `<meta name="twitter:*">` in `<head>` control how the page renders when shared on Discord, Slack, iMessage, LinkedIn, etc.
 - **Hardcoded** with current `CONFIG` values, NOT driven by JS — most social previewers don't execute JS, so JS-applied values would be invisible to them. If you change `CONFIG.clubName` / `CONFIG.description`, mirror the change in the meta tags.
 - `og:image` hot-links the OIT Athletics owl logo at `oregontechowls.com/images/logos/site/site.png`. `data:` URIs aren't fetched by previewers, which is why we can't reuse the embedded favicon.
-- `og:url` is set to `https://barterclub.github.io/CybersecurityClub/` as a placeholder — update when the real deploy URL is known.
+- `og:url` is set to the Cloudflare Worker URL `https://cybersecurityclub.scott-reinholtz.workers.dev/`. If/when you bind a custom domain (e.g. `cybersec.oit.edu`), update this tag in `<head>` AND `CONFIG.qrTargetUrl` in the script block.
 
 ### Favicon
 - Embedded as base64 in `<link rel="icon">` and `<link rel="apple-touch-icon">` (32×32 PNG, ~2 KB).
