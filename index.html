@@ -382,24 +382,24 @@
     image-rendering: pixelated;
   }
   .qr-widget-label {
-    font-family: 'JetBrains Mono', monospace; font-size: 12px;
+    font-family: 'JetBrains Mono', monospace; font-size: 20px;
     color: var(--accent); letter-spacing: .08em; text-transform: uppercase;
-    text-align: center;
+    text-align: center; font-weight: 700;
   }
   .qr-widget-label .qr-arrow { color: var(--text-dim); margin: 0 4px; }
   /* Live solve count below the scan→site label. JS unhides this line only
      when /api/stats answers — otherwise it stays hidden so the kiosk
      widget doesn't show "…" forever on offline previews. */
   .qr-widget-stat {
-    font-family: 'JetBrains Mono', monospace; font-size: 11px;
+    font-family: 'JetBrains Mono', monospace; font-size: 17px;
     color: var(--text-dim); text-align: center;
   }
   .qr-widget-stat strong { color: var(--accent); font-weight: 700; }
   @media (max-width: 720px) {
     .qr-widget { bottom: 38px; right: 8px; padding: 8px; }
     .qr-widget img { width: 160px; height: 160px; padding: 6px; }
-    .qr-widget-label { font-size: 10px; }
-    .qr-widget-stat { font-size: 9px; }
+    .qr-widget-label { font-size: 14px; }
+    .qr-widget-stat { font-size: 12px; }
   }
 
   /* STATUS BAR */
