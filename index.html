@@ -995,6 +995,18 @@ _text
     await _sleep(LINE_DELAY);
   }
 
+  // Emit a "<N> flags captured globally" line when the live counter is known.
+  // No-op if the /api/stats fetch hasn't resolved yet, or if the API failed
+  // (so the line silently doesn't appear in local previews / offline).
+  async function slowSolveCount(myGen = printGen) {
+    if (typeof _bootSolvesValue !== 'number' || !isFinite(_bootSolvesValue)) return;
+    await slow(
+      `<span class="term-out-info">${_bootSolvesValue.toLocaleString()}</span> flags captured across all sessions.`,
+      'dim', myGen
+    );
+    await slowBlank(myGen);
+  }
+
   async function printHome() {
     const g = printGen;
     await slow(`<pre class="ascii-art">
@@ -1009,6 +1021,7 @@ _text
     await slow(`<span class="term-out-ok">$</span> Welcome to the ${CONFIG.clubName} Terminal v1.0.0`, '', g);
     await slow(`${CONFIG.campusName} · ${CONFIG.description}`, 'dim', g);
     await slowBlank(g);
+    await slowSolveCount(g);
     await slow('Type <span class="term-out-ok">help</span> for commands. Type <span class="term-out-mag">ctf</span> to start solving challenges.', 'dim', g);
     await slow('New here? Type <span class="term-out-ok">about</span> for how to get started.', 'dim', g);
   }
@@ -1107,6 +1120,7 @@ _text
     await slowBlank(g);
     await slow('Welcome to the warm-up CTF. <span class="term-out-mag">10 challenges</span> hidden across this site. All client-side, all solvable from the terminal.', '', g);
     await slowBlank(g);
+    await slowSolveCount(g);
     await slow('Run <span class="term-out-ok">ctf list</span> to see them, then <span class="term-out-ok">ctf start &lt;n&gt;</span> for any challenge. Submit with <span class="term-out-ok">flag &lt;text&gt;</span>.', 'dim', g);
     await slowBlank(g);
     await slow('  <span class="term-out-mag">▸</span> recon — DevTools is your friend', '', g);
