@@ -8,6 +8,7 @@ README.md
 
 # Cloudflare config files — meta, not content
 wrangler.jsonc
+wrangler-qr.jsonc
 wrangler.toml
 
 # README screenshots — for the GitHub repo page, not the live site

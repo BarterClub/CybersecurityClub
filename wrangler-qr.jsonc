@@ -1,0 +1,29 @@
+{
+  // Cloudflare Workers static-assets config for the QR-display "kiosk" deploy.
+  //
+  // This site has TWO Cloudflare Workers, both deploying from this same repo:
+  //   - wrangler.jsonc       → "cybersecurityclub"     (production / custom domain, no QR)
+  //   - wrangler-qr.jsonc    → "cybersecurityclub-qr"  (*.workers.dev kiosk, shows QR)
+  //
+  // Both deploys serve the IDENTICAL index.html — the QR widget reveals itself
+  // at runtime by checking location.hostname (see setupQrWidget() in index.html).
+  //
+  // For this Cloudflare project, override the deploy command in the dashboard:
+  //   Workers & Pages → cybersecurityclub-qr → Settings → Build → Deploy command:
+  //     npx wrangler versions upload --config wrangler-qr.jsonc
+  //
+  // Both projects watch `main`, so a single `git push` deploys both in parallel.
+
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "cybersecurityclub-qr",
+  "compatibility_date": "2026-05-07",
+  "observability": {
+    "enabled": true
+  },
+  "assets": {
+    "directory": "."
+  },
+  "compatibility_flags": [
+    "nodejs_compat"
+  ]
+}

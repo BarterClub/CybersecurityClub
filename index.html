@@ -54,6 +54,14 @@
       roost:   'https://theroost.oit.edu/feeds?type=club&type_id=35576&tab=about',
       discord: 'https://discord.gg/bJ2ZjDKhtT',
     },
+
+    // --- QR widget (only shown on the *.workers.dev "kiosk" deploy) ---
+    // The site has two deploys from the same repo:
+    //   1. Custom domain (real public site) — QR widget is HIDDEN here
+    //   2. *.workers.dev URL (kiosk / flyer / "scan to visit" version) — QR widget is SHOWN here
+    // Set qrTargetUrl to the URL the QR should encode (typically the custom domain).
+    // Override locally with `?qr=1` (force show) or `?qr=0` (force hide).
+    qrTargetUrl: 'https://cybersecurityclub.example.com',  // TODO: set to your custom domain
   };
   // Helper: strip the http(s):// prefix when displaying a URL
   const _u = (u) => u.replace(/^https?:\/\//, '');
@@ -352,6 +360,35 @@
   .score-badge { color: var(--magenta); font-size: 11px; padding: 4px 10px;
     border: 1px solid var(--magenta); background: rgba(212,132,255,0.1); }
 
+  /* QR WIDGET — only rendered when shouldShowQr() is true (see JS).
+     Fixed bottom-right kiosk-style "scan to visit" panel.
+     The QR image is fetched from api.qrserver.com on demand — if the
+     service is unreachable, onerror hides the widget so the page still works. */
+  .qr-widget {
+    position: fixed; bottom: 44px; right: 14px; z-index: 50;
+    background: var(--bg-1); border: 1px solid var(--accent);
+    padding: 10px; box-shadow: 0 4px 18px rgba(0,0,0,.5);
+    animation: fadeIn .4s ease backwards; animation-delay: .4s;
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+  }
+  .qr-widget[hidden] { display: none; }
+  .qr-widget img {
+    display: block; width: 140px; height: 140px;
+    background: #fff; padding: 6px; box-sizing: content-box;
+    image-rendering: pixelated;
+  }
+  .qr-widget-label {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    color: var(--accent); letter-spacing: .08em; text-transform: uppercase;
+    text-align: center;
+  }
+  .qr-widget-label .qr-arrow { color: var(--text-dim); margin: 0 4px; }
+  @media (max-width: 720px) {
+    .qr-widget { bottom: 38px; right: 8px; padding: 6px; }
+    .qr-widget img { width: 96px; height: 96px; padding: 4px; }
+    .qr-widget-label { font-size: 9px; }
+  }
+
   /* STATUS BAR */
   .statusbar { display: flex; align-items: center; flex-wrap: wrap; background: var(--accent);
     color: var(--bg-0); font-size: 11px; font-weight: 700; letter-spacing: .05em; min-width: 0; }
@@ -562,6 +599,15 @@
   <span class="status-cell right" id="status-score">CTF 0/7</span>
   <span class="status-cell right" id="clock">--:--:--</span>
 </footer>
+
+<!-- QR WIDGET — kiosk "scan to visit" panel. Hidden by default; shown only on
+     the *.workers.dev deploy (or when ?qr=1 is in the URL for local testing).
+     See setupQrWidget() in JS for the gating logic and CONFIG.qrTargetUrl
+     for what the QR encodes. -->
+<aside id="qr-widget" class="qr-widget" hidden aria-label="QR code linking to the main site">
+  <img id="qr-widget-img" alt="" width="140" height="140">
+  <div class="qr-widget-label">scan<span class="qr-arrow">→</span>site</div>
+</aside>
 
 <script>
   /* ============================================================
@@ -2051,7 +2097,28 @@ ${bot}
       else if (href.includes('theroost.oit.edu/feeds')) a.href = CONFIG.links.roost;
       else if (href.includes('discord.gg/EXAMPLE') || (href.includes('discord.gg') && a.textContent.includes('EXAMPLE'))) a.href = CONFIG.links.discord;
     });
+
+    // QR widget — show only on the kiosk *.workers.dev deploy, never on the
+    // custom-domain "real" site. ?qr=1 forces show, ?qr=0 forces hide (for
+    // local testing, since localhost wouldn't otherwise match).
+    setupQrWidget();
   })();
+
+  function setupQrWidget() {
+    const widget = document.getElementById('qr-widget');
+    if (!widget) return;
+    const param = new URLSearchParams(location.search).get('qr');
+    let show;
+    if (param === '1') show = true;
+    else if (param === '0') show = false;
+    else show = location.hostname.endsWith('.workers.dev');
+    if (!show || !CONFIG.qrTargetUrl) return;
+    const img = document.getElementById('qr-widget-img');
+    img.alt = `QR code: ${CONFIG.qrTargetUrl}`;
+    img.onerror = () => { widget.hidden = true; };
+    img.src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&margin=0&data=${encodeURIComponent(CONFIG.qrTargetUrl)}`;
+    widget.hidden = false;
+  }
   boot();
 </script>
 
