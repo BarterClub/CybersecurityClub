@@ -2,7 +2,7 @@
 
 Website for the [OIT Cybersecurity Club Portland](https://theroost.oit.edu/feeds?type=club&type_id=35576&tab=about) — Oregon Tech's Portland-Metro campus cybersecurity / CTF club.
 
-A single-file static site with a working in-browser terminal, a real Python REPL via Pyodide, and a 10-challenge CTF embedded throughout the page.
+A static HTML/CSS/JS site (`index.html` + `styles.css` + `app.js`) with a working in-browser terminal, a real Python REPL via Pyodide, and a 10-challenge CTF embedded throughout the page.
 
 ![Home page — desktop](docs/screenshots/home.png)
 

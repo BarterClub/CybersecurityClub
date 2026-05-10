@@ -121,9 +121,9 @@ Reset to desktop preset after this section.
 
 ## 8. Source-leak audit
 
-The CTF design intends only flags #1, #2, #5, #7 to be findable in the raw HTML source. The rest (#3, #4, #6, #8, #9) should be obfuscated (precomputed hashes / base64 / atob).
+The CTF design intends only flags #1, #2, #5, #7 to be findable in the raw source. The rest (#3, #4, #6, #8, #9, #10) should be obfuscated (precomputed hashes / base64 / atob).
 
-Use `Grep` on `index.html` searching for the literal flag strings:
+Use `Grep` on `index.html` AND `app.js` (since the script split, the obfuscation logic for #3, #4, #6 lives in `app.js`; #8 banner in `app.js`; #9 SQLi in `app.js`; #10 JWT in `app.js`). Search for the literal flag strings:
 - `flag{b64_is_not_encryption}` — should NOT appear
 - `flag{rotate_thirteen_places}` — should NOT appear
 - `flag{xor_is_just_addition_mod_2}` — should NOT appear

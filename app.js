@@ -1,0 +1,1619 @@
+// OIT Cybersecurity Club Portland — main client-side script.
+//
+// Loaded from index.html via <script src="app.js" defer>. The deferred
+// attribute keeps load order sane: the small inline CONFIG <script> at
+// the top of <head> runs synchronously during parse, this file runs
+// after parse is complete (before DOMContentLoaded), so all globals
+// here can safely reference CONFIG and `document.getElementById(...)`.
+//
+// Was previously inlined in a <script> block at the bottom of the
+// document. Split out so PR diffs and editor navigation aren't mixed
+// across HTML/CSS/JS in a single 2200-line file.
+  /* ============================================================
+     ANIMATED STATS (simulated)
+     ============================================================ */
+  function jitter(b, r) { return Math.max(0, Math.min(100, b + (Math.random()-0.5)*r)); }
+  // Like jitter() but without the 0..100 clamp — for values that aren't percentages (e.g. network KB/s).
+  function jitterFree(b, r) { return Math.max(0, b + (Math.random()-0.5)*r); }
+  // Rolling buffer for the network-in sparkline (most recent N samples)
+  const NET_IN_HISTORY = [];
+  const NET_IN_MAX_POINTS = 40;
+  function drawNetInSparkline() {
+    const line = document.getElementById('net-in-spark-line');
+    if (!line || NET_IN_HISTORY.length < 2) return;
+    const w = 100, h = 24, pad = 2;
+    const min = Math.min(...NET_IN_HISTORY);
+    const max = Math.max(...NET_IN_HISTORY);
+    const span = Math.max(1, max - min);
+    const step = w / (NET_IN_MAX_POINTS - 1);
+    const pts = NET_IN_HISTORY.map((v, i) => {
+      const x = i * step;
+      const y = pad + (h - pad*2) * (1 - (v - min) / span);
+      return x.toFixed(2) + ',' + y.toFixed(2);
+    }).join(' ');
+    line.setAttribute('points', pts);
+  }
+  // Memory totals — kept as constants so the displayed MB values are derived
+  // from a percentage jitter, not jitter on raw MB. Adjust here to simulate
+  // a different machine size (16 GB RAM + 4 GB swap is a reasonable baseline).
+  const MEM_TOTAL_MB  = 16384;  // 16 GB
+  const SWAP_TOTAL_MB =  4096;  //  4 GB
+  setInterval(() => {
+    const cpu = jitter(28, 20);
+    document.getElementById('cpu-pct').textContent = cpu.toFixed(1)+'%';
+    document.getElementById('cpu-bar').style.width = cpu+'%';
+    document.querySelectorAll('[data-core]').forEach(el => {
+      el.textContent = Math.floor(jitter(30, 40))+'%';
+    });
+    // RAM hovers around 45% (~7.4 GB), small range so it doesn't visibly thrash.
+    const ramPct = jitter(45, 8);
+    const ramMB  = Math.round(ramPct / 100 * MEM_TOTAL_MB);
+    document.getElementById('ram-val').textContent = `${ramMB} MB / ${MEM_TOTAL_MB} MB`;
+    document.getElementById('ram-bar').style.width = ramPct + '%';
+    // Swap stays low — typical for a healthy machine.
+    const swapPct = jitter(11, 4);
+    const swapMB  = Math.round(swapPct / 100 * SWAP_TOTAL_MB);
+    document.getElementById('swap-val').textContent = `${swapMB} MB / ${SWAP_TOTAL_MB} MB`;
+    document.getElementById('swap-bar').style.width = swapPct + '%';
+    const netIn = Math.floor(jitterFree(140, 80));
+    document.getElementById('net-in').textContent  = netIn+' KB/s';
+    document.getElementById('net-out').textContent = Math.floor(jitterFree(60,  40))+' KB/s';
+    NET_IN_HISTORY.push(netIn);
+    if (NET_IN_HISTORY.length > NET_IN_MAX_POINTS) NET_IN_HISTORY.shift();
+    drawNetInSparkline();
+  }, 1500);
+
+  /* ============================================================
+     CLOCK + UPTIME
+     ============================================================ */
+  const start = Date.now();
+  setInterval(() => {
+    const now = new Date();
+    const pad = n => n.toString().padStart(2, '0');
+    document.getElementById('clock').textContent =
+      pad(now.getHours())+':'+pad(now.getMinutes())+':'+pad(now.getSeconds());
+    const e = Math.floor((Date.now()-start)/1000);
+    document.getElementById('uptime').textContent =
+      pad(Math.floor(e/3600))+':'+pad(Math.floor((e%3600)/60))+':'+pad(e%60);
+  }, 1000);
+
+  /* ============================================================
+     TAB / PAGE SWITCHING
+     ============================================================ */
+  const PAGES = ['home', 'about', 'events', 'contact', 'ctf'];
+  const FILES = { home:'index.tsx', about:'about.md', events:'events.json', contact:'contact.sh', ctf:'ctf.md' };
+  function switchTab(name) {
+    if (!PAGES.includes(name)) return;
+    document.querySelectorAll('.tab').forEach(t =>
+      t.classList.toggle('active', t.dataset.tab === name));
+    document.getElementById('current-file').textContent = FILES[name];
+    addActivity('ok', `viewed <span class="term-out-info">${name}</span>`);
+    printPage(name);
+    document.getElementById('term-input').focus({ preventScroll: true });
+  }
+  document.querySelectorAll('.tab').forEach(t =>
+    t.addEventListener('click', () => switchTab(t.dataset.tab)));
+
+  /* ============================================================
+     CTF STATE
+     ============================================================
+     Flags are stored hashed (simple FNV-1a) so casual View Source
+     doesn't spoil them. Determined players will still find them —
+     that's the point of a CTF. Replace these with your own.
+     ============================================================ */
+  function fnv1a(s) {
+    let h = 0x811c9dc5;
+    for (let i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = (h + ((h<<1) + (h<<4) + (h<<7) + (h<<8) + (h<<24))) >>> 0;
+    }
+    return h.toString(16).padStart(8, '0');
+  }
+
+  /* ============================================================
+     JWT helpers — used by CTF #10 (jwt_tamper) commands.
+     base64url is base64 with `+/` → `-_` and stripped padding.
+     _hmacFake stands in for an HMAC-SHA256 — the real point of the
+     challenge isn't cracking the secret, it's exploiting alg=none
+     in the verifier (`whoami-jwt` accepts unsigned tokens).
+     ============================================================ */
+  function _b64urlEncode(str) {
+    return btoa(unescape(encodeURIComponent(str)))
+      .replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_');
+  }
+  function _b64urlDecode(s) {
+    s = String(s || '').replace(/-/g, '+').replace(/_/g, '/');
+    while (s.length % 4) s += '=';
+    try { return decodeURIComponent(escape(atob(s))); }
+    catch (_) { return atob(s); }
+  }
+  function _hmacFake(h, p) {
+    return fnv1a(h + '.' + p + '|oit-cybersec-secret');
+  }
+
+  // NOTE: hashes are PRECOMPUTED with fnv1a() and pasted in as hex strings.
+  // We deliberately don't call `fnv1a('flag{...}')` here — that would put
+  // the plaintext flag in the page source for anyone with View Source.
+  // To rotate a flag: compute its hash separately (same fnv1a algorithm)
+  // and paste the new 8-char hex string below.
+  const CHALLENGES = [
+    { id:1, name:'recon',          points:50,
+      brief:'Some files leave secrets in plain sight. View Page Source — really. Search the HTML for "flag{".',
+      hint:'Right-click → View Page Source. Use Ctrl+F. Look near the top of the document.',
+      hash: '92e3be71' },
+    { id:2, name:'console',        points:75,
+      brief:"When this page loaded, something printed to the browser's developer console. Open DevTools → Console tab.",
+      hint:'F12 → Console tab. The flag was logged as plaintext.',
+      hash: '25baafa9' },
+    { id:3, name:'base64',         points:100,
+      brief:'Decode this: ZmxhZ3tiNjRfaXNfbm90X2VuY3J5cHRpb259',
+      hint:"In the terminal: `python` then `import base64; base64.b64decode('...')`. Or any base64 decoder.",
+      hash: '778322a0' },
+    { id:4, name:'rot13',          points:100,
+      brief:'Decode (ROT13): synt{ebgngr_guvegrra_cynprf}',
+      hint:"`python` then `import codecs; codecs.decode('...', 'rot13')`",
+      hash: '8390e5db' },
+    { id:5, name:'obfuscation',    points:150,
+      brief:"There's a 5th flag hidden inside this page's JavaScript, assembled from string fragments. Read the code.",
+      hint:"Search the page source for variables named like _x1, _x2, _x3 ... they concatenate.",
+      hash: '4e62b813' },
+    { id:6, name:'xor',            points:200,
+      brief:'XOR these two hex strings together: 0x1c1d090f1d4f4e1c1c100e15531f1700551b1f10110a16  XOR  0x7b7878787878787878787878787878787878787878787878   (note: lengths must match)',
+      hint:"Use the `python` command. `bytes(a^b for a,b in zip(bytes.fromhex('...'), bytes.fromhex('...')))`",
+      hash: '3f41b02f' },
+    { id:7, name:'steganography',  points:175,
+      brief:'Sometimes data hides in HTML attributes. Inspect the <body> element. Anything... base64-shaped?',
+      hint:'F12 → Elements → click <body>. Look for an unusual data-* attribute. Then base64 decode the value.',
+      hash: 'b85f8162' },
+    { id:8, name:'nmap_recon',     points:125,
+      brief:"A misconfigured service on this host is leaking secrets via its banner. First find out what host you're on, then scan it. Version strings can talk too much.",
+      hint:"Run `ifconfig` to see the local IP, then `nmap` that exact IP. Look at the version string of the unusual port.",
+      hash: '750288b1' },
+    { id:9, name:'sql_injection',  points:150,
+      brief:"There's a `login` command on this terminal that talks to a `users` table. The query string is printed before each attempt — read it carefully. Classic SQLi will get you in.",
+      hint:"Run `login admin password` and look at the SQL it prints. The username is interpolated unsanitized — `login admin'-- anything` will close the quote and comment out the password check. Or try `login admin' OR '1'='1 anything`. The flag is in the admin row that gets returned.",
+      hash: 'f7c7c45b' },
+    { id:10, name:'jwt_tamper',    points:175,
+      brief:"There's a `token` command that issues JWTs and a `whoami-jwt` command that authenticates them. Tokens carry role=user. The admin debug-note holds the flag — forge your way in.",
+      hint:"Use `jwt-decode <token>` to inspect any token. The HS256 signature on server-issued tokens won't budge — but the verifier accepts a second algorithm. Read RFC 7519 §6.1 about `alg: none`. Build a token with header alg=none, payload role=admin, and an empty signature (just leave nothing after the second dot). Use `python` for base64url-encoding (base64.urlsafe_b64encode + strip padding).",
+      hash: 'fe5284ab' }
+  ];
+  // ---- Obfuscated flag #5 (read carefully) ----
+  const _x1 = 'flag{';
+  const _x2 = 'string_';
+  const _x3 = 'concat_';
+  const _x4 = 'is_weak_';
+  const _x5 = 'obfuscation';
+  const _x6 = '}';
+  // (the `motto` var below uses the parts so a smart linter won't flag them as unused)
+  const _motto = _x1 + _x2 + _x3 + _x4 + _x5 + _x6;
+
+  // ---- Console flag drop ----
+  console.log('%c[CTF #2] flag{console_log_is_loud}', 'color:#ffd24f;font-weight:bold;');
+  console.log('%cIf you found this, run `flag console_log_is_loud` in the page terminal.', 'color:#7088a3;');
+
+  const ctfState = {
+    solved: new Set(),     // ids of solved challenges
+    points: 0,
+    activeChallenge: null  // id of last `ctf start`
+  };
+
+  // ---- Persist CTF progress across reloads (localStorage, this browser only) ----
+  const CTF_STORAGE_KEY = 'oit-cybersec-ctf-v1';
+  function saveCtfState() {
+    try {
+      localStorage.setItem(CTF_STORAGE_KEY, JSON.stringify({ solved: Array.from(ctfState.solved) }));
+    } catch (_) { /* private mode / quota — silently ignore */ }
+  }
+  function loadCtfState() {
+    try {
+      const raw = localStorage.getItem(CTF_STORAGE_KEY);
+      if (!raw) return;
+      const data = JSON.parse(raw);
+      if (!Array.isArray(data.solved)) return;
+      ctfState.solved.clear();
+      ctfState.points = 0;
+      data.solved.forEach(id => {
+        const ch = CHALLENGES.find(c => c.id === id);
+        if (ch) { ctfState.solved.add(id); ctfState.points += ch.points; }
+      });
+    } catch (_) { /* corrupt — ignore */ }
+  }
+  loadCtfState();
+
+  function updateScoreUI() {
+    const total = CHALLENGES.length;
+    document.getElementById('score-badge').textContent = `CTF: ${ctfState.solved.size}/${total}`;
+    document.getElementById('status-score').textContent = `CTF ${ctfState.solved.size}/${total} · ${ctfState.points}pts`;
+  }
+  updateScoreUI();
+
+  /* ============================================================
+     PYODIDE LOADER (real Python, on demand)
+     ============================================================ */
+  let pyodide = null;
+  let pyodideLoading = null;
+  async function ensurePyodide(progressFn) {
+    if (pyodide) return pyodide;
+    if (pyodideLoading) return pyodideLoading;
+    pyodideLoading = (async () => {
+      progressFn && progressFn('downloading pyodide runtime (~10MB)... this may take a moment');
+      // Load the loader script
+      await new Promise((res, rej) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js';
+        s.onload = res; s.onerror = () => rej(new Error('failed to load pyodide CDN'));
+        document.head.appendChild(s);
+      });
+      progressFn && progressFn('initializing python interpreter...');
+      pyodide = await window.loadPyodide({
+        indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.26.4/full/'
+      });
+      progressFn && progressFn('python ready.');
+      return pyodide;
+    })().catch(err => { pyodideLoading = null; throw err; });
+    return pyodideLoading;
+  }
+
+  /* ============================================================
+     TERMINAL ENGINE
+     ============================================================ */
+  const term       = document.getElementById('term');
+  const termOutput = document.getElementById('term-output');
+  const termInput  = document.getElementById('term-input');
+  const termPath   = document.getElementById('term-path');
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  function out(html, cls = '') {
+    const div = document.createElement('div');
+    div.className = 'term-line term-out ' + (cls ? 'term-out-' + cls : '');
+    div.innerHTML = html;
+    termOutput.appendChild(div);
+    term.scrollTop = term.scrollHeight;
+  }
+  function blank() { out('&nbsp;'); }
+  function echoCmd(cmd) {
+    const div = document.createElement('div');
+    div.className = 'term-line prompt-line';
+    if (pythonMode) {
+      div.innerHTML = '<span class="term-prompt" style="color:var(--info)">&gt;&gt;&gt;</span>' +
+        '<span class="term-cmd">'+escapeHtml(cmd)+'</span>';
+    } else {
+      div.innerHTML = `<span class="term-prompt">hacker@${CONFIG.clubShort}</span>` +
+        '<span class="term-path">'+termPath.textContent+'</span>' +
+        '<span class="term-dollar">$</span>' +
+        '<span class="term-cmd">'+escapeHtml(cmd)+'</span>';
+    }
+    termOutput.appendChild(div);
+  }
+
+  /* ============================================================
+     PYTHON REPL — interactive mode state, evaluator, prompt switch
+     ============================================================ */
+  let pythonMode = false;
+
+  function updatePromptUI() {
+    const line = document.querySelector('.term-input-line');
+    if (!line) return;
+    const prompt = line.querySelector('.term-prompt');
+    const path   = line.querySelector('.term-path');
+    const dollar = line.querySelector('.term-dollar');
+    if (pythonMode) {
+      prompt.textContent = '>>>';
+      prompt.style.color = 'var(--info)';
+      path.style.display = 'none';
+      dollar.style.display = 'none';
+    } else {
+      prompt.textContent = 'hacker@cybersec';
+      prompt.style.color = '';
+      path.style.display = '';
+      dollar.style.display = '';
+    }
+  }
+
+  // Real-Python-REPL behavior: try eval (expression), fall back to exec (statement).
+  // Captures stdout/stderr and prints repr() of expression results, like a real REPL.
+  async function runPythonLine(line) {
+    try {
+      const py = await ensurePyodide(msg => out('  '+msg, 'dim'));
+      const wrapper = `
+import sys, io, traceback
+_buf = io.StringIO()
+_old_out, _old_err = sys.stdout, sys.stderr
+sys.stdout = _buf
+sys.stderr = _buf
+_repr = None
+try:
+    try:
+        _code = compile(${JSON.stringify(line)}, '<stdin>', 'eval')
+        _r = eval(_code, globals())
+        if _r is not None:
+            _repr = repr(_r)
+    except SyntaxError:
+        _code = compile(${JSON.stringify(line)}, '<stdin>', 'exec')
+        exec(_code, globals())
+except Exception:
+    traceback.print_exc(limit=-1)
+finally:
+    sys.stdout = _old_out
+    sys.stderr = _old_err
+_text = _buf.getvalue()
+if _repr is not None:
+    _text += _repr + '\\n'
+_text
+      `.trim();
+      const text = py.runPython(wrapper);
+      if (text) {
+        text.replace(/\n$/, '').split('\n').forEach(ln => out(escapeHtml(ln)));
+      }
+    } catch (e) {
+      out(escapeHtml(String(e.message || e)), 'err');
+    }
+  }
+
+  /* ============================================================
+     ACTIVITY LOG — driven by terminal commands, tab clicks, links
+     ============================================================ */
+  function addActivity(level, html) {
+    const log = document.getElementById('activity-log');
+    if (!log) return;
+    const tagText = { info:'INFO', ok:' OK ', warn:'WARN', err:' ERR' }[level] || 'INFO';
+    const cssLevel = level === 'err' ? 'warn' : level;  // reuse warn red-ish styling for errors
+    const div = document.createElement('div');
+    div.className = `log-line log-${cssLevel}`;
+    div.innerHTML = `<span class="log-tag">[${tagText}]</span> ${html}`;
+    log.insertBefore(div, log.firstChild);
+    // cap to keep the panel from growing unbounded
+    while (log.children.length > 30) log.removeChild(log.lastChild);
+  }
+
+  /* ============================================================
+     PAGE PRINTERS — render each "page" into the terminal scroll
+     line-by-line, like an old teletype
+     ============================================================ */
+  // Honor prefers-reduced-motion: collapse the typewriter delay so page printers
+  // render instantly for users who've opted out of motion at the OS level.
+  const REDUCED_MOTION = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const LINE_DELAY = REDUCED_MOTION ? 0 : 55;  // ms between printed lines
+  let printGen = 0;       // incremented on each new printPage; lets in-flight prints finish fast if the user clicks again
+  function _sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+  async function slow(html, cls = '', myGen = printGen) {
+    out(html, cls);
+    if (myGen !== printGen) return;  // a newer print has started — flush instantly
+    await _sleep(LINE_DELAY);
+  }
+  async function slowBlank(myGen = printGen) {
+    blank();
+    if (myGen !== printGen) return;
+    await _sleep(LINE_DELAY);
+  }
+
+  // Emit a "<N> flags captured globally" line when the live counter is known.
+  // No-op if the /api/stats fetch hasn't resolved yet, or if the API failed
+  // (so the line silently doesn't appear in local previews / offline).
+  async function slowSolveCount(myGen = printGen) {
+    if (typeof _bootSolvesValue !== 'number' || !isFinite(_bootSolvesValue)) return;
+    await slow(
+      `<span class="term-out-info">${_bootSolvesValue.toLocaleString()}</span> flags captured across all sessions.`,
+      'dim', myGen
+    );
+    await slowBlank(myGen);
+  }
+
+  async function printHome() {
+    const g = printGen;
+    await slow(`<pre class="ascii-art">
+ ██████╗██╗   ██╗██████╗ ███████╗██████╗ ███████╗███████╗ ██████╗
+██╔════╝╚██╗ ██╔╝██╔══██╗██╔════╝██╔══██╗██╔════╝██╔════╝██╔════╝
+██║      ╚████╔╝ ██████╔╝█████╗  ██████╔╝███████╗█████╗  ██║
+██║       ╚██╔╝  ██╔══██╗██╔══╝  ██╔══██╗╚════██║██╔══╝  ██║
+╚██████╗   ██║   ██████╔╝███████╗██║  ██║███████║███████╗╚██████╗
+ ╚═════╝   ╚═╝   ╚═════╝ ╚══════╝╚═╝  ╚═╝╚══════╝╚══════╝ ╚═════╝
+              ${CONFIG.campusName} · Hustlin' Owls
+</pre>`, '', g);
+    await slow(`<span class="term-out-ok">$</span> Welcome to the ${CONFIG.clubName} Terminal v1.0.0`, '', g);
+    await slow(`${CONFIG.campusName} · ${CONFIG.description}`, 'dim', g);
+    await slowBlank(g);
+    await slowSolveCount(g);
+    await slow('Type <span class="term-out-ok">help</span> for commands. Type <span class="term-out-mag">ctf</span> to start solving challenges.', 'dim', g);
+    await slow('New here? Type <span class="term-out-ok">about</span> for how to get started.', 'dim', g);
+  }
+
+  async function printAbout() {
+    const g = printGen;
+    await slow('# about.md', 'mag', g);
+    await slowBlank(g);
+    await slow(`The <span class="term-out-ok">${CONFIG.clubName}</span> is a student-run cybersecurity / hacking / CTF club at ${CONFIG.campusName}. We meet ${CONFIG.meetingDay}s at ${CONFIG.meetingTime} in ${CONFIG.meetingRoom} to break things, learn new tools, and prep for CTF competitions.`, '', g);
+    await slowBlank(g);
+    await slow('Areas of focus:', 'dim', g);
+    await slow('  <span class="term-out-ok">▸</span> Network &amp; web exploitation (nmap, Burp, sqlmap, Metasploit)', '', g);
+    await slow('  <span class="term-out-ok">▸</span> Hardware &amp; wireless security (Pwnagotchi, Flipper, Bash Bunny, Alfa cards)', '', g);
+    await slow('  <span class="term-out-ok">▸</span> Reverse engineering &amp; binary exploitation (Ghidra, pwntools, ROP)', '', g);
+    await slow('  <span class="term-out-ok">▸</span> Defensive ops &amp; SIEM (Splunk, Wazuh, network forensics)', '', g);
+    await slow('  <span class="term-out-ok">▸</span> CTF preparation — internal practice + external competitions', '', g);
+    await slowBlank(g);
+    await slow('<span class="term-out-mag">## How to get started</span>', '', g);
+    await slowBlank(g);
+    await slow("It's two things:", '', g);
+    await slow(`  <span class="term-out-warn">1.</span> <a href="${CONFIG.links.signup}" target="_blank" rel="noopener">Sign up on The Roost</a> — that's the only formal step.`, '', g);
+    await slow("  <span class=\"term-out-warn\">2.</span> Show up to meetings you can make. We won't take attendance.", '', g);
+    await slowBlank(g);
+    await slow('Two kinds of meetings:', 'dim', g);
+    await slow(`  <span class="term-out-ok">▸</span> <span class="term-out-info">Weekly labs</span> — every ${CONFIG.meetingDay}, ${CONFIG.meetingTime}, ${CONFIG.meetingRoom}. Hands-on practice on whatever we're working on that week.`, '', g);
+    await slow(`  <span class="term-out-ok">▸</span> <span class="term-out-info">Term highlights</span> — bigger events at quarter end (CTFs, guest speakers, showcases). See the <a href="#" onclick="switchTab('events');return false;">events page</a> for what's coming up.`, '', g);
+    await slowBlank(g);
+    await slow("Can't make every Thursday? Come to whatever you can. No prior experience required. Bring a laptop. Curiosity is mandatory. Membership is free.", '', g);
+  }
+
+  /* ============================================================
+     UPCOMING-MEETING HELPERS — past Thursdays auto-disappear
+     ============================================================ */
+  const MONTHS_SHORT = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+  const MONTHS_NICE  = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const DAY_NUMS = { Sunday:0, Monday:1, Tuesday:2, Wednesday:3, Thursday:4, Friday:5, Saturday:6 };
+  function upcomingThursdays(count) {
+    const out = [];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const target = DAY_NUMS[CONFIG.meetingDay] ?? 4;
+    const daysUntil = (target - today.getDay() + 7) % 7;
+    const first = new Date(today);
+    first.setDate(today.getDate() + daysUntil);
+    for (let i = 0; i < count; i++) {
+      const d = new Date(first);
+      d.setDate(first.getDate() + i * 7);
+      out.push(d);
+    }
+    return out;
+  }
+  const _DAY_ABBR = (n) => ['SUN','MON','TUE','WED','THU','FRI','SAT'][n];
+  const _Day      = (n) => ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][n];
+  function fmtEventCard(d) { return `${_DAY_ABBR(d.getDay())} ${MONTHS_SHORT[d.getMonth()]} ${String(d.getDate()).padStart(2)}`; }
+  function fmtNextMeeting(d) { return `${_Day(d.getDay())} ${MONTHS_NICE[d.getMonth()]} ${d.getDate()} · ${CONFIG.meetingTime}`; }
+
+  // Format a Date as ISO `YYYY-MM-DD` for matching against CONFIG.specialEvents
+  function isoDate(d) {
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  }
+
+  async function printEvents() {
+    const g = printGen;
+    await slow(`# events.json — every ${CONFIG.meetingDay} at ${CONFIG.meetingTime}, ${CONFIG.meetingRoom}`, 'mag', g);
+    await slowBlank(g);
+    for (const d of upcomingThursdays(5)) {
+      const special = (CONFIG.specialEvents || []).find(e => e.date === isoDate(d));
+      const title      = special ? special.title : 'Weekly meeting';
+      const titleClass = special ? 'mag'         : 'info';
+      const detail     = (special && special.detail) || `${CONFIG.meetingTime} · ${CONFIG.meetingRoom}`;
+      await slow(`  <span class="term-out-warn">${fmtEventCard(d)}</span>  <span class="term-out-${titleClass}">${title}</span>  <span class="term-out-dim">· ${detail}</span>`, '', g);
+    }
+  }
+
+  async function printContact() {
+    const g = printGen;
+    await slow('# contact.sh', 'mag', g);
+    await slowBlank(g);
+    await slow('Reach out — for joining, questions, or anything else.', '', g);
+    await slowBlank(g);
+    await slow(`  <span class="term-out-dim">sign up    :</span> <a href="${CONFIG.links.signup}" target="_blank">${_u(CONFIG.links.signup)}</a>`, '', g);
+    await slow(`  <span class="term-out-dim">the roost  :</span> <a href="${CONFIG.links.roost}" target="_blank">club page</a>`, '', g);
+    await slow(`  <span class="term-out-dim">discord    :</span> <a href="${CONFIG.links.discord}" target="_blank">${_u(CONFIG.links.discord)}</a>`, '', g);
+    await slow(`  <span class="term-out-dim">advisor    :</span> ${CONFIG.advisor.name}`, '', g);
+    await slowBlank(g);
+    await slow('# officers.list', 'mag', g);
+    const padW = Math.max(...CONFIG.officers.map(o => o.role.length));
+    for (const o of CONFIG.officers) {
+      await slow(`  <span class="term-out-dim">${o.role.toLowerCase().padEnd(padW)}:</span> ${o.name}`, '', g);
+    }
+  }
+
+  async function printCtf() {
+    const g = printGen;
+    await slow('# ctf.md', 'mag', g);
+    await slowBlank(g);
+    await slow('Welcome to the warm-up CTF. <span class="term-out-mag">10 challenges</span> hidden across this site. All client-side, all solvable from the terminal.', '', g);
+    await slowBlank(g);
+    await slowSolveCount(g);
+    await slow('Run <span class="term-out-ok">ctf list</span> to see them, then <span class="term-out-ok">ctf start &lt;n&gt;</span> for any challenge. Submit with <span class="term-out-ok">flag &lt;text&gt;</span>.', 'dim', g);
+    await slowBlank(g);
+    await slow('  <span class="term-out-mag">▸</span> recon — DevTools is your friend', '', g);
+    await slow('  <span class="term-out-mag">▸</span> console — JS execution leaves traces', '', g);
+    await slow('  <span class="term-out-mag">▸</span> base64 — encoding ≠ encryption', '', g);
+    await slow('  <span class="term-out-mag">▸</span> rot13 — substitution cipher classic', '', g);
+    await slow('  <span class="term-out-mag">▸</span> obfuscation — read the JavaScript carefully', '', g);
+    await slow('  <span class="term-out-mag">▸</span> xor — needs real Python (try the <span class="term-out-ok">python</span> command)', '', g);
+    await slow('  <span class="term-out-mag">▸</span> steganography — sometimes data hides in plain sight', '', g);
+    await slow('  <span class="term-out-mag">▸</span> nmap_recon — services talk too much (try the <span class="term-out-ok">nmap</span> command)', '', g);
+    await slow('  <span class="term-out-mag">▸</span> sql_injection — read the SQL the <span class="term-out-ok">login</span> command prints, break the WHERE clause', '', g);
+    await slow('  <span class="term-out-mag">▸</span> jwt_tamper — issue with <span class="term-out-ok">token</span>, inspect with <span class="term-out-ok">jwt-decode</span>, forge with alg=none, present to <span class="term-out-ok">whoami-jwt</span>', '', g);
+    await slowBlank(g);
+    await slow('Type <span class="term-out-ok">hint &lt;n&gt;</span> if stuck. Type <span class="term-out-ok">score</span> for progress. Run <span class="term-out-ok">ctf reset</span> to wipe saved state.', 'dim', g);
+    await slow('Progress is saved in this browser via localStorage — survives reloads, but not incognito or other browsers.', 'dim', g);
+  }
+
+  async function printPage(name) {
+    printGen++;  // any in-flight print sees a stale gen and flushes instantly
+    const printers = { home: printHome, about: printAbout, events: printEvents, contact: printContact, ctf: printCtf };
+    const fn = printers[name];
+    if (!fn) return;
+    // Scroll to bottom first so the typewriter effect happens in view
+    term.scrollTop = term.scrollHeight;
+    await fn();
+  }
+
+  /* ============================================================
+     COMMANDS
+     ============================================================ */
+  const COMMANDS = {
+    help: { desc:'List commands. Run `help <name>` for details on one.', run: (a) => {
+      const target = (a[0] || '').toLowerCase();
+      // ---- Detail view for a specific command ----
+      if (target) {
+        const cmd = COMMANDS[target];
+        if (!cmd) {
+          out(`no help: "${escapeHtml(target)}" is not a command. Try \`help\` for the list.`, 'err');
+          return;
+        }
+        out(`<span class="term-out-warn">━━ ${target} ━━</span>`);
+        out(cmd.desc);
+        if (cmd.usage) {
+          blank();
+          out('<span class="term-out-warn">USAGE</span>');
+          out('  ' + cmd.usage);
+        }
+        if (cmd.examples && cmd.examples.length) {
+          blank();
+          out('<span class="term-out-warn">EXAMPLES</span>');
+          cmd.examples.forEach(e => out('  <span class="term-out-info">' + e + '</span>'));
+        }
+        if (cmd.notes) {
+          blank();
+          out('<span class="term-out-warn">NOTES</span>');
+          cmd.notes.split('\n').forEach(l => out('  ' + l, 'dim'));
+        }
+        return;
+      }
+      // ---- Full categorized list ----
+      const cats = {
+        'Pages':     ['home','about','events','contact','ctf'],
+        'Network':   ['nmap','ping','dig','whois','traceroute','ifconfig','netstat','curl','ssh','login','token','jwt-decode','whoami-jwt'],
+        'Filesystem':['ls','cat','tree','df','pwd'],
+        'System':    ['whoami','uname','date','uptime','history','echo','neofetch'],
+        'Tools':     ['base64','rot13','hash','python','py','fortune','cowsay','banner'],
+        'Club':      ['join','roster','next','discord','roost','signup'],
+        'CTF':       ['ctf','flag','hint','score'],
+        'Misc':      ['matrix','sudo','vim','emacs','rm','clear','exit','help','h'],
+      };
+      const seen = new Set();
+      Object.entries(cats).forEach(([cat, cmds]) => {
+        out(`<span class="term-out-warn">── ${cat} ──</span>`);
+        cmds.forEach(n => {
+          if (COMMANDS[n] && !seen.has(n)) {
+            seen.add(n);
+            out(`  <span class="term-out-info">${n.padEnd(12)}</span><span class="term-out-dim">${COMMANDS[n].desc}</span>`);
+          }
+        });
+        blank();
+      });
+      // surface anything not categorized
+      const missing = Object.keys(COMMANDS).filter(n => !seen.has(n));
+      if (missing.length) {
+        out(`<span class="term-out-warn">── Other ──</span>`);
+        missing.forEach(n => out(`  <span class="term-out-info">${n.padEnd(12)}</span><span class="term-out-dim">${COMMANDS[n].desc}</span>`));
+        blank();
+      }
+      out('Run <span class="term-out-info">help &lt;name&gt;</span> for usage + examples on any command.', 'dim');
+      out('Tips: ↑/↓ history · Tab complete · Ctrl+L clear · Ctrl+C abort', 'dim');
+    }},
+
+    about:   { desc:'Show the about page',    run: () => switchTab('about') },
+    events:  { desc:'Show upcoming events',   run: () => switchTab('events') },
+    contact: { desc:'Show contact info',      run: () => switchTab('contact') },
+    home:    { desc:'Go to the home page',    run: () => switchTab('home') },
+
+    join:    { desc:'How to join the club', run: () => {
+      out('Three steps to join:', 'ok');
+      out(`  1. Sign up on The Roost: <a href="${CONFIG.links.signup}" target="_blank">${_u(CONFIG.links.signup)}</a>`);
+      out(`  2. Show up to a meeting (see <span class="term-out-info">events</span>) — ${CONFIG.meetingDay}s at ${CONFIG.meetingTime}`);
+      out(`  3. Hop in our Discord: <a href="${CONFIG.links.discord}" target="_blank">${_u(CONFIG.links.discord)}</a>`);
+      blank();
+      out('No experience required.', 'dim');
+    }},
+
+    ls: { desc:'List "files" in this directory', run: () => {
+      out('<span class="term-out-info">about.md</span>      <span class="term-out-info">events.json</span>     <span class="term-out-info">contact.sh</span>');
+      out('<span class="term-out-info">ctf.md</span>        <span class="term-out-info">officers.list</span>   <span class="term-out-info">README</span>');
+    }},
+
+    cat: { desc:'Show contents of a "file"', run: (a) => {
+      const f = (a[0]||'').toLowerCase();
+      const fs = {
+        'readme':()=>switchTab('home'), 'about.md':()=>switchTab('about'),
+        'events.json':()=>switchTab('events'), 'contact.sh':()=>switchTab('contact'),
+        'ctf.md':()=>switchTab('ctf'),
+        'motto.txt':()=>out('"hack the planet — responsibly."', 'mag'),
+        'officers.list':()=>switchTab('contact')
+      };
+      if (!f) return out('usage: cat <file>   (try: cat README)', 'err');
+      if (fs[f]) return fs[f]();
+      out('cat: '+escapeHtml(f)+': No such file or directory', 'err');
+    }},
+
+    whoami: { desc:'Print current user',     run: () => out('hacker', 'ok') },
+    pwd:    { desc:'Print working directory', run: () => out('/home/hacker'+termPath.textContent.replace('~',''), 'ok') },
+    date:   { desc:'Show current date',       run: () => out(new Date().toString(), 'ok') },
+    uname:  { desc:'Print system info',       run: () => out('Linux club-host 6.9.0-club #1 SMP x86_64 GNU/Linux', 'ok') },
+    echo:   { desc:'Echo arguments',          run: (a) => out(escapeHtml(a.join(' '))) },
+
+    sudo:   { desc:'Become root (you wish)',  run: () => {
+      out('[sudo] password for hacker:', 'dim');
+      setTimeout(() => out('Sorry, user hacker is not in the sudoers file. This incident will be reported.', 'err'), 600);
+    }},
+
+    matrix: { desc:'Wake up, Neo...', run: () => {
+      const c = '01アイウエオカキクケコｱｲｳｴｵｶｷｸｹｺ';
+      for (let i = 0; i < 6; i++) {
+        let line = '';
+        for (let j = 0; j < 60; j++) line += c[Math.floor(Math.random()*c.length)];
+        out('<span class="term-out-ok">'+line+'</span>');
+      }
+    }},
+
+    clear:  { desc:'Clear the terminal',     run: () => { termOutput.innerHTML=''; }},
+    exit:   { desc:'Exit (just kidding)',    run: () => out("nope, you're stuck here. try 'help'", 'warn') },
+
+    /* ============================================================
+       CTF COMMANDS
+       ============================================================ */
+    ctf: { desc:'CTF challenge mode',
+      usage: 'ctf [list|start <n>|reset]',
+      examples: ['ctf list', 'ctf start 3', 'ctf reset'],
+      notes: 'Progress saves to localStorage so it survives reloads.',
+      run: (a) => {
+      const sub = (a[0] || 'list').toLowerCase();
+      if (sub === 'list' || sub === 'ls') {
+        out('CTF CHALLENGES', 'mag');
+        out('──────────────', 'dim');
+        CHALLENGES.forEach(ch => {
+          const mark = ctfState.solved.has(ch.id) ? '<span class="term-out-ok">[✓]</span>' : '<span class="term-out-dim">[ ]</span>';
+          out(`${mark}  <span class="term-out-info">#${ch.id}</span> <span style="color:var(--magenta)">${ch.name.padEnd(16)}</span><span class="term-out-dim">${ch.points}pts</span>`);
+        });
+        blank();
+        out(`Total: ${ctfState.solved.size}/${CHALLENGES.length} solved · ${ctfState.points} points`, 'mag');
+        out('Run `ctf start <n>` for details. Submit with `flag <text>`.', 'dim');
+        return;
+      }
+      if (sub === 'start' || sub === 'open') {
+        const n = parseInt(a[1], 10);
+        const ch = CHALLENGES.find(c => c.id === n);
+        if (!ch) return out('usage: ctf start <number>   (1-'+CHALLENGES.length+')', 'err');
+        ctfState.activeChallenge = ch.id;
+        out(`── Challenge #${ch.id}: ${ch.name} (${ch.points}pts) ──`, 'mag');
+        out(ch.brief);
+        blank();
+        out(`Submit with: flag &lt;value&gt;   (the flag{} wrapper is optional)`, 'dim');
+        out(`Stuck? hint ${ch.id}`, 'dim');
+        return;
+      }
+      if (sub === 'reset') {
+        ctfState.solved.clear();
+        ctfState.points = 0;
+        ctfState.activeChallenge = null;
+        saveCtfState();
+        updateScoreUI();
+        out('CTF progress cleared.', 'warn');
+        return;
+      }
+      out('usage: ctf list  |  ctf start <n>  |  ctf reset', 'err');
+    }},
+
+    flag: { desc:'Submit a CTF flag (the surrounding flag{} is optional)',
+      usage: 'flag <value>',
+      examples: ['flag flag{example}', 'flag {example}', 'flag example', 'flag{example}'],
+      notes: 'All four formats above are equivalent. The leading `flag` command is even optional — typing `flag{...}` or `{...}` on its own works too.',
+      run: (a) => {
+      let submission = a.join(' ').trim();
+      if (!submission) return out('usage: flag <value>   (you can include flag{...} or just the inside)', 'err');
+      // Normalize: accept "flag{x}", "{x}", or bare "x" — wrap into flag{x}
+      if (!/^flag\{.*\}$/i.test(submission)) {
+        if (/^\{.*\}$/.test(submission)) submission = submission.slice(1, -1);
+        submission = `flag{${submission}}`;
+      }
+      const h = fnv1a(submission);
+      const match = CHALLENGES.find(c => c.hash === h);
+      if (!match) {
+        out('✗ incorrect flag', 'err');
+        return;
+      }
+      if (ctfState.solved.has(match.id)) {
+        out(`✓ already solved: #${match.id} ${match.name}`, 'warn');
+        return;
+      }
+      ctfState.solved.add(match.id);
+      ctfState.points += match.points;
+      saveCtfState();
+      addActivity('ok', `flag captured: <span class="term-out-mag">#${match.id} ${match.name}</span> +${match.points}pts`);
+      out(`✓ CORRECT! Challenge #${match.id} (${match.name}) — +${match.points}pts`, 'ok');
+      updateScoreUI();
+      // Best-effort: tell the global counter on the Worker. Server re-hashes
+      // and verifies before incrementing, so this can't be used to inflate.
+      // Fire-and-forget — failure (e.g. local-only preview, no network) is fine.
+      fetch('/api/solve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ flag: submission }),
+      }).then(r => r.ok ? r.json() : null).then(d => {
+        if (d && typeof d.total === 'number') updateBootSolves(d.total);
+      }).catch(() => {});
+      if (ctfState.solved.size === CHALLENGES.length) {
+        blank();
+        out('  ╔══════════════════════════════════════════╗', 'mag');
+        out('  ║  ALL CHALLENGES SOLVED — nice work, hacker. ║', 'mag');
+        out('  ╚══════════════════════════════════════════╝', 'mag');
+      }
+    }},
+
+    score: { desc:'Show CTF progress', run: () => {
+      out(`${ctfState.solved.size}/${CHALLENGES.length} challenges solved · ${ctfState.points} points`, 'mag');
+      CHALLENGES.forEach(ch => {
+        const m = ctfState.solved.has(ch.id) ? '<span class="term-out-ok">[✓]</span>' : '<span class="term-out-dim">[ ]</span>';
+        out(`  ${m} #${ch.id} ${ch.name}`);
+      });
+    }},
+
+    hint: { desc:'Show a CTF challenge hint',
+      usage: 'hint [n|name]',
+      examples: ['hint 3', 'hint base64', 'hint nmap_recon', 'hint'],
+      notes: 'With no argument, shows the hint for the currently active challenge (the last `ctf start <n>`).',
+      run: (a) => {
+      const arg = (a[0] || '').toLowerCase();
+      let ch = null;
+      if (arg) {
+        const n = parseInt(arg, 10);
+        if (!isNaN(n)) ch = CHALLENGES.find(c => c.id === n);
+        else ch = CHALLENGES.find(c => c.name.toLowerCase() === arg);
+      } else if (ctfState.activeChallenge) {
+        ch = CHALLENGES.find(c => c.id === ctfState.activeChallenge);
+      }
+      if (!ch) {
+        out('No challenge matched. Run `ctf start <n>` first, or use `hint <n>` / `hint <name>`.', 'err');
+        out('Available challenges:', 'dim');
+        CHALLENGES.forEach(c => out(`  <span class="term-out-info">#${c.id}</span> <span class="term-out-mag">${c.name}</span>`));
+        return;
+      }
+      out(`hint #${ch.id} (${ch.name}):`, 'warn');
+      out('  '+ch.hint);
+    }},
+
+    /* ============================================================
+       PYTHON — real Python via Pyodide (loads on first use)
+       Type `python` with no args to enter interactive REPL mode.
+       ============================================================ */
+    python: { desc:'Real Python REPL — `python` for interactive mode, or `python <expr>` for one-shot',
+      usage: 'python [expression]',
+      examples: ['python', 'python 2 + 2', "python import base64; print(base64.b64decode('aGk=').decode())", 'python [x*x for x in range(5)]'],
+      notes: 'No args drops you into an interactive >>> REPL. Type exit() or Ctrl+C to leave.\nFirst use downloads ~10MB Pyodide WASM (cached after).',
+      run: async (a) => {
+      const expr = a.join(' ').trim();
+      try {
+        await ensurePyodide(msg => out('  '+msg, 'dim'));
+        if (!expr) {
+          // Enter interactive REPL mode
+          pythonMode = true;
+          updatePromptUI();
+          out('Python 3.11 (Pyodide on WebAssembly)', 'ok');
+          out('Type any Python — every line is sent to the interpreter.', 'dim');
+          out('Use <span class="term-out-info">exit()</span> or <span class="term-out-info">quit()</span> to return to bash.', 'dim');
+          addActivity('ok', 'entered <span class="term-out-info">python REPL</span>');
+          return;
+        }
+        // One-shot: run via the same evaluator as REPL mode
+        await runPythonLine(expr);
+      } catch (err) {
+        out(escapeHtml(String(err.message || err)), 'err');
+      }
+    }},
+
+    py: { desc:'Alias for python', run: (a) => COMMANDS.python.run(a) },
+
+    /* ============================================================
+       NETWORK / SECURITY (all simulated — no real packets leave the page)
+       ============================================================ */
+    nmap: { desc:'Port-scan a host (simulated)',
+      usage: 'nmap <host>',
+      examples: ['nmap localhost', 'nmap oit.edu', 'nmap 10.50.0.1'],
+      notes: 'Output is simulated — no packets actually leave your browser.\nScanning the local IP turns up something interesting (CTF #8).',
+      run: async (a) => {
+      const target = a[0] || 'localhost';
+      const safeT = escapeHtml(target);
+      const ts = new Date().toISOString().slice(0,19).replace('T',' ');
+      out(`Starting Nmap 7.94 ( https://nmap.org ) at ${ts}`, 'dim');
+      await new Promise(r => setTimeout(r, 250));
+      out(`Nmap scan report for <span class="term-out-info">${safeT}</span>`);
+      out(`Host is up (0.0023s latency).`, 'dim');
+      blank();
+      out(`PORT      STATE     SERVICE         VERSION`, 'warn');
+      const ports = [
+        ['22/tcp',   'open',     'ssh',          'OpenSSH 9.3'],
+        ['80/tcp',   'open',     'http',         'nginx 1.24.0'],
+        ['443/tcp',  'open',     'https',        'nginx 1.24.0 (TLS 1.3)'],
+        ['3306/tcp', 'filtered', 'mysql',        '?'],
+        ['8080/tcp', 'closed',   'http-proxy',   '?'],
+        ['9000/tcp', 'open',     'cslistener',   'unknown'],
+      ];
+      for (const [port, state, svc, ver] of ports) {
+        await new Promise(r => setTimeout(r, 220));
+        const cls = state === 'open' ? 'ok' : state === 'filtered' ? 'warn' : 'dim';
+        out(`${port.padEnd(10)}<span class="term-out-${cls}">${state.padEnd(10)}</span>${svc.padEnd(16)}${ver}`);
+      }
+      // CTF #8: leak a flag in a service banner only when the player scans
+      // the exact IP surfaced by `ifconfig` (10.50.0.1). Bare `nmap` and
+      // `nmap localhost` / `nmap 127.0.0.1` deliberately do NOT leak.
+      // The banner is base64-encoded so the literal `flag{...}` string
+      // never appears in page source — defeats casual `Ctrl+F flag{`.
+      if (target === '10.50.0.1') {
+        await new Promise(r => setTimeout(r, 280));
+        const _banner = atob('ZmxhZ3tubWFwX2ZpbmRzX3doYXRfZXllc19taXNzfQ==');
+        out(`1337/tcp  <span class="term-out-ok">open</span>      ctf-banner      <span class="term-out-mag">Banner: ${escapeHtml(_banner)}</span>`);
+        out(`|_ctf-banner: service is leaking debug data — submit the banner with \`flag &lt;text&gt;\``, 'dim');
+      }
+      blank();
+      out(`Nmap done: 1 IP address (1 host up) scanned in 1.87 seconds`, 'dim');
+    }},
+
+    ping: { desc:'Send ICMP echo requests (simulated)',
+      usage: 'ping <host>',
+      examples: ['ping localhost', 'ping oit.edu'],
+      run: async (a) => {
+      const t = escapeHtml(a[0] || 'localhost');
+      out(`PING ${t} (10.50.0.1) 56(84) bytes of data.`);
+      let received = 0;
+      for (let i = 0; i < 4; i++) {
+        await new Promise(r => setTimeout(r, 350));
+        const time = (Math.random() * 5 + 0.4).toFixed(2);
+        out(`64 bytes from ${t}: icmp_seq=${i+1} ttl=64 time=${time} ms`);
+        received++;
+      }
+      blank();
+      out(`--- ${t} ping statistics ---`);
+      out(`4 packets transmitted, ${received} received, 0% packet loss, time 1612ms`);
+    }},
+
+    dig: { desc:'DNS lookup (simulated)',
+      usage: 'dig <domain>',
+      examples: ['dig oit.edu', 'dig example.com'],
+      run: (a) => {
+      const t = escapeHtml(a[0] || 'oit.edu');
+      out(`; <<>> DiG 9.18 <<>> ${t}`, 'dim');
+      blank();
+      out(`;; ANSWER SECTION:`, 'warn');
+      out(`${t}.\t300\tIN\tA\t199.46.115.21`);
+      out(`${t}.\t300\tIN\tAAAA\t2607:f8b0:400a::200e`);
+      blank();
+      out(`;; Query time: 23 msec`, 'dim');
+      out(`;; SERVER: 1.1.1.1#53(1.1.1.1)`, 'dim');
+    }},
+
+    whois: { desc:'Domain registration lookup (simulated)', run: (a) => {
+      const t = (a[0] || 'oit.edu').toUpperCase();
+      out(`Domain Name: ${escapeHtml(t)}`);
+      out(`Registry: EDUCAUSE`);
+      out(`Registrant: Oregon Institute of Technology`);
+      out(`Registration Date: 1989-04-11`);
+      out(`Status: clientTransferProhibited`);
+      out(`Name Servers: NS1.OIT.EDU, NS2.OIT.EDU`);
+    }},
+
+    traceroute: { desc:'Trace route to a host (simulated)',
+      usage: 'traceroute <host>',
+      examples: ['traceroute oit.edu', 'traceroute google.com'],
+      run: async (a) => {
+      const t = escapeHtml(a[0] || 'oit.edu');
+      out(`traceroute to ${t} (199.46.115.21), 30 hops max, 60 byte packets`);
+      const hops = [
+        ['10.50.0.1',     '0.5'],
+        ['192.168.1.1',   '1.2'],
+        ['10.0.0.1',      '8.4'],
+        ['72.14.207.115', '15.7'],
+        ['108.170.252.1', '22.3'],
+        ['199.46.115.21', '24.1'],
+      ];
+      for (let i = 0; i < hops.length; i++) {
+        await new Promise(r => setTimeout(r, 220));
+        out(` ${(i+1).toString().padStart(2)}  ${hops[i][0].padEnd(20)}  ${hops[i][1]} ms`);
+      }
+    }},
+
+    ifconfig: { desc:'Network interface configuration', run: () => {
+      out(`eth0: flags=4163&lt;UP,BROADCAST,RUNNING,MULTICAST&gt;  mtu 1500`, 'info');
+      out(`        inet 10.50.0.1  netmask 255.255.255.0  broadcast 10.50.0.255`);
+      out(`        ether de:ad:be:ef:00:01  txqueuelen 1000  (Ethernet)`);
+      out(`        RX packets 1337420  bytes 542109184 (542.1 MB)`);
+      out(`        TX packets 998877   bytes 184273920 (184.2 MB)`);
+      blank();
+      out(`lo:   flags=73&lt;UP,LOOPBACK,RUNNING&gt;  mtu 65536`, 'info');
+      out(`        inet 127.0.0.1  netmask 255.0.0.0`);
+    }},
+
+    netstat: { desc:'Listening ports + active connections (simulated)', run: () => {
+      out(`Active Internet connections (servers and established)`, 'warn');
+      out(`Proto Recv-Q Send-Q  Local Address         Foreign Address       State`);
+      const rows = [
+        ['tcp',  '0',  '0',  '0.0.0.0:22',         '0.0.0.0:*',           'LISTEN'],
+        ['tcp',  '0',  '0',  '0.0.0.0:80',         '0.0.0.0:*',           'LISTEN'],
+        ['tcp',  '0',  '0',  '0.0.0.0:443',        '0.0.0.0:*',           'LISTEN'],
+        ['tcp',  '0',  '0',  '127.0.0.1:5432',     '0.0.0.0:*',           'LISTEN'],
+        ['tcp',  '0',  '0',  '10.50.0.1:443',      '142.250.80.78:443',   'ESTABLISHED'],
+      ];
+      rows.forEach(r => out(`${r[0].padEnd(6)}${r[1].padEnd(7)}${r[2].padEnd(7)} ${r[3].padEnd(22)}${r[4].padEnd(22)}${r[5]}`));
+    }},
+
+    curl: { desc:'Make an HTTP request (simulated)',
+      usage: 'curl <url>',
+      examples: ['curl https://oit.edu', 'curl http://localhost'],
+      run: (a) => {
+      if (!a[0]) return out('usage: curl &lt;url&gt;', 'err');
+      const url = escapeHtml(a[0]);
+      out(`* Trying ${url}...`, 'dim');
+      out(`&gt; GET / HTTP/2`, 'info');
+      out(`&gt; User-Agent: curl/8.0`, 'dim');
+      blank();
+      out(`&lt; HTTP/2 200`, 'ok');
+      out(`&lt; server: nginx`, 'dim');
+      out(`&lt; content-type: text/html`, 'dim');
+      blank();
+      out(`&lt;!doctype html&gt;&lt;title&gt;Hello from ${url}&lt;/title&gt;`);
+    }},
+
+    ssh: { desc:'Connect to a remote host', run: (a) => {
+      const t = escapeHtml(a[0] || 'localhost');
+      out(`Permission denied (publickey).`, 'err');
+      out(`ssh: connect to host ${t} port 22: Authentication failure`, 'dim');
+    }},
+
+    /* CTF #9 — SQL injection. The `login` command builds a SQL query by
+       string-concatenating the user's input, prints it as "debug output"
+       (which is the vulnerability hint), then "executes" it against an
+       in-memory users table. A classic auth-bypass injection in the
+       username field returns the admin row, which carries the flag.
+       The flag literal is base64-encoded so View Source doesn't surface it. */
+    login: { desc:'Log in to the admin panel (simulated)',
+      usage: 'login <username> <password>',
+      examples: ['login admin admin', 'login root toor', "login admin'-- ignored"],
+      notes: 'Output is simulated — no real auth happens.\nA real login system. Try not to break it.\nNote: arguments split on whitespace, so wrap multi-word values carefully.',
+      run: async (a) => {
+      const user = a[0] || '';
+      const pass = a.slice(1).join(' ') || '';
+      if (!user || !pass) return out('usage: login &lt;username&gt; &lt;password&gt;', 'err');
+
+      // The "vulnerability" — interpolate user input straight into SQL and print it
+      const sql = `SELECT * FROM users WHERE name='${user}' AND pass='${pass}'`;
+      out(`<span class="term-out-dim">[debug] executing: ${escapeHtml(sql)}</span>`);
+      await new Promise(r => setTimeout(r, 280));
+
+      // Detect classic auth-bypass patterns. We're matching against the resulting
+      // SQL string so single-quote-escapes, comments, and tautologies all count.
+      const injected = /'\s*(or|\|\|)\s+('?\d+'?\s*=\s*'?\d+'?|true|'[^']*'\s*=\s*'[^']*')|'\s*(--|#|\/\*)/i.test(sql);
+
+      if (injected) {
+        const _flag = atob('ZmxhZ3tzcWxfaW5qZWN0aW9uX2lzX2NsYXNzaWN9');
+        out(`<span class="term-out-ok">✓ query returned 1 row (auth check bypassed)</span>`);
+        out(`Welcome, admin. Session token issued.`, 'dim');
+        blank();
+        out(`<span class="term-out-warn">id  name   role   note</span>`);
+        out(`1   admin  root   <span class="term-out-mag">${escapeHtml(_flag)}</span>`);
+        out(`|_ submit the note value with \`flag &lt;text&gt;\``, 'dim');
+        return;
+      }
+
+      out(`Authentication failed: invalid credentials`, 'err');
+      out(`  hint: the SQL printed above is built by string concatenation.`, 'dim');
+      out(`  hint: in real attacks, that pattern is exploitable. (CTF #9)`, 'dim');
+    }},
+
+    /* CTF #10 — JWT alg=none. `token` issues a fake-HMAC-signed token; the
+       verifier `whoami-jwt` accepts BOTH HS256 (with the deterministic fake
+       HMAC) AND alg=none with an empty signature — the classic vulnerability.
+       Player must forge a token with alg=none and role=admin to reveal the
+       admin debug-note (the flag). The flag literal is base64-encoded so
+       View Source doesn't surface it. */
+    token: { desc:'Issue a JWT for a username (simulated)',
+      usage: 'token <username>',
+      examples: ['token alice', 'token bob'],
+      notes: 'All issued tokens carry role=user. To see the admin debug-note in whoami-jwt, you will need to forge a token. Hint: read up on JWT alg=none.',
+      run: (a) => {
+      const user = (a[0] || 'guest').slice(0, 32);
+      const header  = { alg: 'HS256', typ: 'JWT' };
+      const payload = { user, role: 'user', iat: Math.floor(Date.now()/1000) };
+      const h = _b64urlEncode(JSON.stringify(header));
+      const p = _b64urlEncode(JSON.stringify(payload));
+      const sig = _hmacFake(h, p);
+      const tok = `${h}.${p}.${sig}`;
+      out(`Issued JWT for <span class="term-out-info">${escapeHtml(user)}</span>:`);
+      out(`  <span class="term-out-info">${escapeHtml(tok)}</span>`);
+      blank();
+      out(`Inspect with \`jwt-decode &lt;token&gt;\`. Authenticate with \`whoami-jwt &lt;token&gt;\`.`, 'dim');
+    }},
+
+    'jwt-decode': { desc:'Decode and pretty-print a JWT (no verification)',
+      usage: 'jwt-decode <token>',
+      examples: ['jwt-decode eyJhbGciOiJIUzI1NiJ9.eyJ1c2VyIjoiYWxpY2UifQ.sig'],
+      notes: 'Read-only. Does not check the signature.',
+      run: (a) => {
+      const tok = (a[0] || '').trim();
+      if (!tok) return out('usage: jwt-decode &lt;token&gt;', 'err');
+      const parts = tok.split('.');
+      if (parts.length !== 3) return out('not a JWT (expected 3 dot-separated parts)', 'err');
+      let header, payload;
+      try { header  = JSON.parse(_b64urlDecode(parts[0])); }
+      catch (e) { return out('header decode failed: ' + escapeHtml(e.message), 'err'); }
+      try { payload = JSON.parse(_b64urlDecode(parts[1])); }
+      catch (e) { return out('payload decode failed: ' + escapeHtml(e.message), 'err'); }
+      out(`<span class="term-out-warn">header:</span>    ${escapeHtml(JSON.stringify(header))}`);
+      out(`<span class="term-out-warn">payload:</span>   ${escapeHtml(JSON.stringify(payload))}`);
+      out(`<span class="term-out-warn">signature:</span> ${escapeHtml(parts[2] || '(empty)')}`);
+    }},
+
+    'whoami-jwt': { desc:'Authenticate with a JWT (simulated server)',
+      usage: 'whoami-jwt <token>',
+      examples: ['whoami-jwt <paste-token-here>'],
+      notes: 'Returns the role-gated admin debug-note when role=admin.',
+      run: (a) => {
+      const tok = (a[0] || '').trim();
+      if (!tok) return out('usage: whoami-jwt &lt;token&gt;', 'err');
+      const parts = tok.split('.');
+      if (parts.length !== 3) return out('malformed token (expected 3 dot-separated parts)', 'err');
+      let header, payload;
+      try {
+        header  = JSON.parse(_b64urlDecode(parts[0]));
+        payload = JSON.parse(_b64urlDecode(parts[1]));
+      } catch (e) { return out('decode error: ' + escapeHtml(e.message), 'err'); }
+      out(`<span class="term-out-dim">[debug] alg = ${escapeHtml(String(header.alg))}</span>`);
+
+      // Verifier — accepts HS256 with our fake HMAC, OR alg=none with empty sig.
+      // The intended exploit is alg=none.
+      let sigOk = false;
+      if (header.alg === 'none') {
+        sigOk = !parts[2];
+      } else if (header.alg === 'HS256') {
+        sigOk = parts[2] === _hmacFake(parts[0], parts[1]);
+      }
+      if (!sigOk) {
+        out(`✗ signature verification failed (alg=${escapeHtml(String(header.alg))})`, 'err');
+        return;
+      }
+      out(`<span class="term-out-ok">✓ signature accepted (alg=${escapeHtml(String(header.alg))})</span>`);
+      out(`Hello, <span class="term-out-info">${escapeHtml(String(payload.user || 'anonymous'))}</span> (role: ${escapeHtml(String(payload.role || 'user'))})`);
+
+      if (payload.role === 'admin') {
+        const _flag = atob('ZmxhZ3tub25lX2FsZ19zdHJpa2VzX2FnYWlufQ==');
+        blank();
+        out(`<span class="term-out-mag">═══ ADMIN DEBUG PANEL ═══</span>`);
+        out(`  debug-note: <span class="term-out-mag">${escapeHtml(_flag)}</span>`);
+        out(`|_ submit the note value with \`flag &lt;text&gt;\``, 'dim');
+      } else {
+        out(`(non-admins don't see the debug-note)`, 'dim');
+      }
+    }},
+
+    /* ============================================================
+       UTILITIES
+       ============================================================ */
+    history: { desc:'Show recent command history', run: () => {
+      if (!history.length) return out('(no history yet)', 'dim');
+      history.slice().reverse().forEach((h, i) => {
+        out(`  ${(i+1).toString().padStart(3)}  ${escapeHtml(h)}`);
+      });
+    }},
+
+    tree: { desc:'Show directory tree', run: () => {
+      out('<span class="term-out-info">~/cybersec/</span>');
+      out('├── <span class="term-out-info">about.md</span>');
+      out('├── <span class="term-out-info">events.json</span>');
+      out('├── <span class="term-out-info">contact.sh</span>');
+      out('├── <span class="term-out-info">officers.list</span>');
+      out('├── <span class="term-out-mag">ctf.md</span>');
+      out('├── motto.txt');
+      out('└── <span class="term-out-info">README</span>');
+      blank();
+      out('1 directory, 7 files', 'dim');
+    }},
+
+    df: { desc:'Disk usage', run: () => {
+      out('Filesystem      Size  Used  Avail  Use%  Mounted on', 'warn');
+      out('/dev/sda1       200G  134G   66G   67%  /');
+      out('/dev/sda2        50G   12G   38G   24%  /home');
+      out('tmpfs            16G  4.2G   12G   27%  /tmp');
+    }},
+
+    uptime: { desc:'Show how long the session has been up', run: () => {
+      const e = Math.floor((Date.now()-start)/1000);
+      const h = Math.floor(e/3600), m = Math.floor((e%3600)/60), s = e%60;
+      out(`up ${h}h ${m}m ${s}s, 1 user, load average: 0.42, 0.31, 0.27`);
+    }},
+
+    /* ============================================================
+       TOOLS
+       ============================================================ */
+    base64: { desc:'Encode or decode base64',
+      usage: 'base64 (encode|decode) <text>',
+      examples: ['base64 encode hello', 'base64 decode aGVsbG8=', 'base64 decode ZmxhZ3tiNjRfaXNfbm90X2VuY3J5cHRpb259'],
+      notes: 'Real encoding via the browser btoa/atob — no fake output.',
+      run: (a) => {
+      const mode = (a[0]||'').toLowerCase();
+      const input = a.slice(1).join(' ');
+      if (!mode || !input) return out('usage: base64 encode &lt;text&gt;  |  base64 decode &lt;text&gt;', 'err');
+      try {
+        const result = mode === 'encode' ? btoa(input) : mode === 'decode' ? atob(input) : null;
+        if (result === null) return out('mode must be "encode" or "decode"', 'err');
+        out(escapeHtml(result), 'ok');
+      } catch (e) {
+        out('error: '+escapeHtml(e.message), 'err');
+      }
+    }},
+
+    rot13: { desc:'Apply ROT13 to text',
+      usage: 'rot13 <text>',
+      examples: ['rot13 hello world', 'rot13 synt{ebgngr_guvegrra_cynprf}'],
+      notes: 'ROT13 is its own inverse — encrypting twice gives you the original back.',
+      run: (a) => {
+      const input = a.join(' ');
+      if (!input) return out('usage: rot13 &lt;text&gt;', 'err');
+      const r = input.replace(/[a-zA-Z]/g, c => {
+        const base = c <= 'Z' ? 65 : 97;
+        return String.fromCharCode((c.charCodeAt(0) - base + 13) % 26 + base);
+      });
+      out(escapeHtml(r), 'ok');
+    }},
+
+    hash: { desc:'SHA-256 hash a string',
+      usage: 'hash <text>',
+      examples: ['hash hunter2', 'hash flag{example}'],
+      notes: 'Real SHA-256 via the browser SubtleCrypto API. Requires HTTPS in production.',
+      run: async (a) => {
+      const input = a.join(' ');
+      if (!input) return out('usage: hash &lt;text&gt;', 'err');
+      const buf = new TextEncoder().encode(input);
+      const h = await crypto.subtle.digest('SHA-256', buf);
+      const hex = Array.from(new Uint8Array(h)).map(b => b.toString(16).padStart(2,'0')).join('');
+      out(`<span class="term-out-info">SHA-256:</span> ${hex}`);
+    }},
+
+    fortune: { desc:'Print a random hacker fortune', run: () => {
+      const quotes = [
+        "Talk is cheap. Show me the code. — Linus Torvalds",
+        "Hack the planet. — Hackers (1995)",
+        "The quieter you become, the more you can hear. — Kali Linux",
+        "Security is a process, not a product. — Bruce Schneier",
+        "There is no patch for human stupidity. — Kevin Mitnick",
+        "If debugging is the process of removing software bugs, then programming must be the process of putting them in. — Edsger Dijkstra",
+        "It's not a bug, it's an undocumented feature.",
+        "The best way to predict the future is to implement it. — David Heinemeier Hansson",
+        "Code never lies, comments sometimes do. — Ron Jeffries",
+        "Trust no one. Verify everything.",
+        "Given enough eyeballs, all bugs are shallow. — Linus's Law",
+      ];
+      out(quotes[Math.floor(Math.random()*quotes.length)], 'mag');
+    }},
+
+    cowsay: { desc:'ASCII cow says something',
+      usage: 'cowsay [message]',
+      examples: ['cowsay hello', 'cowsay hack the planet'],
+      run: (a) => {
+      const msg = a.join(' ') || 'hack the planet';
+      const safeMsg = escapeHtml(msg);
+      const top = ' ' + '_'.repeat(msg.length + 2);
+      const bot = ' ' + '-'.repeat(msg.length + 2);
+      out(`<pre style="margin:0;font-family:inherit;color:var(--accent)">${top}
+&lt; ${safeMsg} &gt;
+${bot}
+        \\   ^__^
+         \\  (oo)\\_______
+            (__)\\       )\\/\\
+                ||----w |
+                ||     ||</pre>`);
+    }},
+
+    banner: { desc:'Reprint the CYBERSEC banner', run: () => printPage('home') },
+
+    neofetch: { desc:'System info, fancied up', run: () => {
+      const e = Math.floor((Date.now()-start)/1000);
+      const h = Math.floor(e/3600), m = Math.floor((e%3600)/60);
+      const ua = navigator.userAgent.split(' ').slice(-1)[0];
+      out(`<pre style="margin:0;font-family:inherit"><span class="term-out-ok">     .--.</span>          <span class="term-out-ok">hacker</span>@<span class="term-out-info">cybersec</span>
+<span class="term-out-ok">    |o_o |</span>         ----------------------------
+<span class="term-out-ok">    |:_/ |</span>         <span class="term-out-warn">OS:</span>       Linux club-host 6.9.0-club
+<span class="term-out-ok">   //   \\ \\</span>        <span class="term-out-warn">Host:</span>     OIT Cybersecurity Club Portland
+<span class="term-out-ok">  (|     | )</span>       <span class="term-out-warn">Kernel:</span>   6.9.0-club
+<span class="term-out-ok"> /'\\_   _/\`\\</span>      <span class="term-out-warn">Uptime:</span>   ${h}h ${m}m
+<span class="term-out-ok"> \\___)=(___/</span>      <span class="term-out-warn">Shell:</span>    bash 5.2
+                       <span class="term-out-warn">Browser:</span>  ${escapeHtml(ua)}
+                       <span class="term-out-warn">Theme:</span>    Hustlin' Owls (navy/gold)</pre>`);
+    }},
+
+    /* ============================================================
+       CLUB SHORTCUTS
+       ============================================================ */
+    roster: { desc:'List club officers', run: () => {
+      out(`Club Officers — ${new Date().getFullYear()}`, 'mag');
+      const padW = Math.max(...CONFIG.officers.map(o => o.role.length), 'Advisor'.length) + 2;
+      CONFIG.officers.forEach(o => {
+        out(`  <span class="term-out-info">${o.role.padEnd(padW)}</span> ${o.name}`);
+      });
+      out(`  <span class="term-out-info">${'Advisor'.padEnd(padW)}</span> ${CONFIG.advisor.name}`);
+    }},
+
+    next: { desc:'Show date/time of next meeting', run: () => {
+      const d = upcomingThursdays(1)[0];
+      out(`Next meeting: <span class="term-out-warn">${fmtNextMeeting(d)}</span> · <span class="term-out-info">${CONFIG.meetingRoom}</span>`);
+    }},
+
+    discord: { desc:'Open Discord invite', run: () => {
+      out(`Opening Discord... <a href="${CONFIG.links.discord}" target="_blank">${_u(CONFIG.links.discord)}</a>`);
+      window.open(CONFIG.links.discord, '_blank');
+    }},
+
+    roost: { desc:'Open The Roost club page', run: () => {
+      out(`Opening The Roost... <a href="${CONFIG.links.roost}" target="_blank">${_u(CONFIG.links.roost).split('?')[0]}</a>`);
+      window.open(CONFIG.links.roost, '_blank');
+    }},
+
+    signup: { desc:'Open the club signup page', run: () => {
+      out(`Opening signup... <a href="${CONFIG.links.signup}" target="_blank">${_u(CONFIG.links.signup)}</a>`);
+      window.open(CONFIG.links.signup, '_blank');
+    }},
+
+    /* ============================================================
+       EASTER EGGS
+       ============================================================ */
+    vim: { desc:'Open the editor', run: () => {
+      out('vim: terminal too small for vim', 'err');
+      out('     (try emacs... just kidding, never)', 'dim');
+    }},
+
+    emacs: { desc:'Open the other editor', run: () => {
+      out('emacs: a great operating system, lacking only a decent editor', 'warn');
+    }},
+
+    rm: { desc:'Remove files', run: (a) => {
+      if (a.includes('-rf') && (a.includes('/') || a.includes('--no-preserve-root'))) {
+        out("you can't be serious", 'err');
+        out('rm: it is dangerous to operate recursively on /', 'err');
+        out('rm: use --no-preserve-root to override this safety check', 'dim');
+        return;
+      }
+      out('rm: nothing to remove (this is a website, not a real fs)', 'err');
+    }}
+  };
+
+  // help alias
+  COMMANDS.h = { ...COMMANDS.help, desc:'Alias for help' };
+
+  /* ============================================================
+     HISTORY + INPUT HANDLING
+     ============================================================ */
+  const history = [];
+  let histIdx = -1;
+
+  async function execute(raw) {
+    const line = raw.trim();
+    echoCmd(raw);
+    if (!line) return;
+    history.unshift(line);
+    histIdx = -1;
+
+    // ---- Python REPL mode: every line goes to the interpreter ----
+    if (pythonMode) {
+      if (/^(exit|quit)\s*\(\s*\)\s*$/i.test(line) || /^(:?q|exit|quit)$/i.test(line)) {
+        pythonMode = false;
+        updatePromptUI();
+        out('exited python REPL', 'dim');
+        addActivity('info', 'exited python REPL');
+        return;
+      }
+      addActivity('info', `py: <span class="term-out-info">${escapeHtml(line.length > 30 ? line.slice(0,27)+'...' : line)}</span>`);
+      await runPythonLine(line);
+      return;
+    }
+
+    // Shortcut: typing `flag{...}` (or `{...}`) on its own runs the flag command
+    if (/^(flag)?\{.*\}$/i.test(line)) {
+      addActivity('info', `flag attempt: <span class="term-out-mag">${escapeHtml(line)}</span>`);
+      try { await COMMANDS.flag.run([line]); }
+      catch (e) { out('error: '+escapeHtml(e.message||e), 'err'); }
+      return;
+    }
+    const [cmdName, ...args] = line.split(/\s+/);
+    const cmd = COMMANDS[cmdName.toLowerCase()];
+    if (!cmd) {
+      addActivity('err', `unknown: ${escapeHtml(cmdName)}`);
+      out('command not found: '+escapeHtml(cmdName)+". Type 'help'.", 'err');
+      return;
+    }
+    addActivity('info', `cmd: <span class="term-out-info">${escapeHtml(line.length > 38 ? line.slice(0,35)+'...' : line)}</span>`);
+    try { await cmd.run(args); }
+    catch (e) { out('error: '+escapeHtml(e.message||e), 'err'); }
+  }
+
+  // Global link-click activity logging (any <a> on the page)
+  document.body.addEventListener('click', (e) => {
+    const a = e.target.closest('a');
+    if (!a || !a.href || !/^https?:/i.test(a.href)) return;
+    try {
+      const host = new URL(a.href).hostname;
+      addActivity('info', `opened <span class="term-out-info">${escapeHtml(host)}</span>`);
+    } catch (_) {}
+  });
+
+  // Only refocus the input if the user isn't selecting text — preserves drag-to-select
+  term.addEventListener('mouseup', () => {
+    const sel = window.getSelection();
+    if (sel && sel.toString().length > 0) return;
+    termInput.focus({ preventScroll: true });
+  });
+  termInput.focus({ preventScroll: true });
+
+  termInput.addEventListener('keydown', async (e) => {
+    // Any key in the input snaps the output area to the bottom so you can see latest output
+    term.scrollTop = term.scrollHeight;
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const v = termInput.value;
+      termInput.value = '';
+      await execute(v);
+      term.scrollTop = term.scrollHeight;
+      return;
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!history.length) return;
+      histIdx = Math.min(histIdx+1, history.length-1);
+      termInput.value = history[histIdx];
+      setTimeout(() => termInput.setSelectionRange(termInput.value.length, termInput.value.length), 0);
+      return;
+    }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (histIdx <= 0) { histIdx=-1; termInput.value=''; return; }
+      histIdx--;
+      termInput.value = history[histIdx];
+      return;
+    }
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const part = termInput.value.trim();
+      if (!part) return;
+      const m = Object.keys(COMMANDS).filter(k => k.startsWith(part));
+      if (m.length === 1) termInput.value = m[0];
+      else if (m.length > 1) { echoCmd(termInput.value); out(m.join('   '), 'dim'); }
+      return;
+    }
+    if (e.ctrlKey && e.key.toLowerCase() === 'l') {
+      e.preventDefault();
+      termOutput.innerHTML = '';
+      return;
+    }
+    if (e.ctrlKey && e.key.toLowerCase() === 'c') {
+      // If user has selected text, let the browser copy it instead of aborting
+      const sel = window.getSelection();
+      if (sel && sel.toString().length > 0) return;
+      e.preventDefault();
+      echoCmd(termInput.value+'^C');
+      termInput.value = '';
+      histIdx = -1;
+      // In Python REPL, Ctrl+C drops back to bash (mirrors real python behavior)
+      if (pythonMode) {
+        pythonMode = false;
+        updatePromptUI();
+        out('KeyboardInterrupt', 'warn');
+        out('exited python REPL', 'dim');
+        addActivity('info', 'exited python REPL (^C)');
+      }
+      return;
+    }
+  });
+
+  /* ============================================================
+     BOOT
+     ============================================================ */
+  function boot() {
+    const lines = [
+      ['['+new Date().toISOString().slice(11,19)+`] booting ${CONFIG.clubShort} terminal v1.0.0...`, 'dim'],
+      ['[ OK ] mounted /dev/club on /', 'ok'],
+      ['[ OK ] started network manager', 'ok'],
+      ['[ OK ] started session for user hacker', 'ok'],
+      ['[ OK ] CTF subsystem ready: '+CHALLENGES.length+' challenges loaded', 'ok'],
+      // Live counter — fetched from /api/stats at boot. The placeholder span
+      // gets its textContent replaced when the fetch resolves; if the API is
+      // unreachable, we hide the line entirely so it doesn't sit there as `…`.
+      [`[INFO] <span id="boot-solves">…</span> flags captured across all sessions`, 'info'],
+      ['', '']
+    ];
+    let i = 0;
+    const tick = () => {
+      if (i >= lines.length) {
+        // Final attempt in case the fetch resolved during the last setTimeout.
+        if (typeof applyBootSolves === 'function') applyBootSolves();
+        printPage('home');
+        return;
+      }
+      const [t, c] = lines[i++];
+      if (t) out(t, c); else blank();
+      // After each line prints, retry the live-stats apply. Once the
+      // #boot-solves placeholder is rendered, this no-ops on subsequent
+      // calls (the element either gets its number or gets removed).
+      if (typeof applyBootSolves === 'function') applyBootSolves();
+      setTimeout(tick, REDUCED_MOTION ? 0 : 100);
+    };
+    tick();
+  }
+
+  // Populate dynamic Club Info + Recent Activity fields from the upcoming-meeting helper
+  (function populateDynamicFields() {
+    const next = upcomingThursdays(1)[0];
+    const label = fmtNextMeeting(next);
+    const infoNext = document.getElementById('info-next');
+    const logNext  = document.getElementById('log-next-meeting');
+    if (infoNext) infoNext.textContent = label;
+    if (logNext)  logNext.textContent  = label;
+
+    // Next special event (CTF night, guest speaker, etc.). Find the soonest
+    // entry in CONFIG.specialEvents whose date is today or later, and surface
+    // it in the Club Info panel. If there are none upcoming, leave the row hidden.
+    const todayMidnight = new Date();
+    todayMidnight.setHours(0, 0, 0, 0);
+    const nextSpecial = (CONFIG.specialEvents || [])
+      .map(e => ({ ...e, _d: new Date(e.date + 'T00:00:00') }))   // local midnight, not UTC
+      .filter(e => !isNaN(e._d) && e._d >= todayMidnight)
+      .sort((a, b) => a._d - b._d)[0];
+    if (nextSpecial) {
+      const eventRow = document.getElementById('info-event-row');
+      const eventEl  = document.getElementById('info-event');
+      if (eventRow && eventEl) {
+        eventEl.textContent = `${_Day(nextSpecial._d.getDay())} ${MONTHS_NICE[nextSpecial._d.getMonth()]} ${nextSpecial._d.getDate()} · ${nextSpecial.title}`;
+        eventRow.style.display = '';
+      }
+    }
+  })();
+
+  /* ============================================================
+     APPLY CONFIG — sync the HTML defaults to whatever's in CONFIG
+     so editing the CONFIG block updates the page everywhere
+     ============================================================ */
+  (function applyConfig() {
+    const set = (sel, val) => { const el = document.querySelector(sel); if (el) el.textContent = val; };
+    const setHref = (sel, href) => { const el = document.querySelector(sel); if (el) el.href = href; };
+
+    // <head> + topbar
+    document.title = `${CONFIG.clubName} // terminal`;
+    const meta = document.querySelector('meta[name="description"]');
+    if (meta) meta.content = CONFIG.description;
+    set('.topbar-brand-text', CONFIG.clubName);
+
+    // Center panel header path
+    const ph = document.querySelector('.panel-header');
+    if (ph) {
+      // Rebuild the inner "~ /<short>/<file>" while preserving the current-file span
+      const cur = document.getElementById('current-file');
+      const curText = cur ? cur.textContent : 'index.tsx';
+      const headerSpan = ph.querySelector('span:first-child');
+      if (headerSpan) headerSpan.innerHTML = `<span class="panel-header-icon">~</span>/${CONFIG.clubShort}/<span id="current-file">${curText}</span>`;
+    }
+
+    // Live terminal prompt
+    const livePrompt = document.querySelector('.term-input-line .term-prompt');
+    if (livePrompt && !pythonMode) livePrompt.textContent = `hacker@${CONFIG.clubShort}`;
+
+    // Right-column Club Info rows — each value cell has an id="info-*" so we
+    // can target it directly. If a row is missing or hidden, the corresponding
+    // line is a no-op, so reordering or hiding rows in HTML is safe here.
+    set('#info-founded', CONFIG.founded);
+    set('#info-members', CONFIG.members);
+    set('#info-location', CONFIG.meetingRoom);
+
+    // Recent Activity seed lines — addressed by ID so reordering them in HTML
+    // doesn't silently break this rewrite.
+    const founded = document.getElementById('log-founded');
+    if (founded) founded.innerHTML = `<span class="log-tag">[INFO]</span> Club founded — ${CONFIG.founded}`;
+    const memberLink = document.getElementById('log-members');
+    if (memberLink) memberLink.textContent = CONFIG.officers.length;
+    const workshops = document.getElementById('log-workshops');
+    if (workshops) workshops.innerHTML = `<span class="log-tag">[ OK ]</span> Workshops weekly · ${CONFIG.meetingRoom}`;
+
+    // Quick Links + topbar Join button
+    setHref('a.btn-register', CONFIG.links.signup);
+    document.querySelectorAll('a').forEach(a => {
+      const href = a.getAttribute('href') || '';
+      if (href.includes('PMCYB/club_signup')) a.href = CONFIG.links.signup;
+      else if (href.includes('theroost.oit.edu/feeds')) a.href = CONFIG.links.roost;
+      else if (href.includes('discord.gg/EXAMPLE') || (href.includes('discord.gg') && a.textContent.includes('EXAMPLE'))) a.href = CONFIG.links.discord;
+    });
+
+    // QR widget — show only on the kiosk *.workers.dev deploy, never on the
+    // custom-domain "real" site. ?qr=1 forces show, ?qr=0 forces hide (for
+    // local testing, since localhost wouldn't otherwise match).
+    setupQrWidget();
+  })();
+
+  function setupQrWidget() {
+    const widget = document.getElementById('qr-widget');
+    if (!widget) return;
+    const param = new URLSearchParams(location.search).get('qr');
+    let show;
+    if (param === '1') show = true;
+    else if (param === '0') show = false;
+    else show = !!CONFIG.qrShowHostnamePrefix && location.hostname.startsWith(CONFIG.qrShowHostnamePrefix);
+    if (!show || !CONFIG.qrTargetUrl) return;
+    const img = document.getElementById('qr-widget-img');
+    img.alt = `QR code: ${CONFIG.qrTargetUrl}`;
+    img.onerror = () => { widget.hidden = true; };
+    img.src = `https://api.qrserver.com/v1/create-qr-code/?size=480x480&margin=0&data=${encodeURIComponent(CONFIG.qrTargetUrl)}`;
+    widget.hidden = false;
+  }
+
+  /* ============================================================
+     LIVE STATS — fetch the global flag-capture count from the
+     Cloudflare Worker at /api/stats and show it under the boot
+     line. Gracefully degrades if the API is unreachable (e.g.
+     during local file:// or python -m http.server preview):
+     the boot line silently disappears.
+
+     Race detail: the boot animation prints lines with setTimeout,
+     so the #boot-solves placeholder doesn't exist until ~600ms in.
+     The fetch usually resolves first. We store the result in
+     `_bootSolvesValue` and apply it whenever both (a) we have a
+     value and (b) the element has been rendered. boot()'s tick
+     calls applyBootSolves() after every line so the "render is
+     ready" half of the race is checked frequently.
+     ============================================================ */
+  let _bootSolvesValue = undefined;  // undefined = pending; null = failed; number = ok
+  function applyBootSolves() {
+    if (_bootSolvesValue === undefined) return;
+    // Boot-line placeholder (under "[ OK ] CTF subsystem ready" in the boot animation)
+    const bootEl = document.getElementById('boot-solves');
+    if (bootEl) {
+      if (_bootSolvesValue === null) {
+        const line = bootEl.closest('.term-line');
+        if (line) line.remove();
+      } else {
+        bootEl.textContent = _bootSolvesValue.toLocaleString();
+      }
+    }
+    // QR widget — kiosk-only stats line under the scan→site label.
+    // Unhidden only when we have a real number; stays hidden on API failure
+    // so the kiosk widget doesn't show "…" indefinitely.
+    const qrEl     = document.getElementById('qr-solves');
+    const qrLine   = document.getElementById('qr-solves-line');
+    if (qrEl && qrLine && typeof _bootSolvesValue === 'number') {
+      qrEl.textContent = _bootSolvesValue.toLocaleString();
+      qrLine.hidden = false;
+    }
+  }
+  function updateBootSolves(n) {
+    _bootSolvesValue = (typeof n === 'number' && isFinite(n)) ? n : null;
+    applyBootSolves();
+  }
+  fetch('/api/stats')
+    .then(r => r.ok ? r.json() : Promise.reject(r.status))
+    .then(d => updateBootSolves(d && typeof d.total === 'number' ? d.total : null))
+    .catch(() => updateBootSolves(null));
+
+  // Periodic refresh so the kiosk QR widget + boot line + sidebar count
+  // stay live without a full page reload (which would lose scroll position,
+  // python REPL state, and terminal history for anyone actively using the
+  // site). One hour is enough motion for a passive display.
+  // On poll failure we leave the existing value alone instead of degrading
+  // to null — a transient API hiccup shouldn't make the line disappear.
+  const STATS_POLL_MS = 60 * 60 * 1000;
+  setInterval(() => {
+    fetch('/api/stats')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (d && typeof d.total === 'number') updateBootSolves(d.total);
+      })
+      .catch(() => {});
+  }, STATS_POLL_MS);
+
+  boot();

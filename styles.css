@@ -1,0 +1,317 @@
+/* OIT Cybersecurity Club Portland — site styles.
+   Loaded from index.html via <link rel="stylesheet">. Was previously
+   inlined in a <style> block; split out so the rendered HTML diff in
+   PRs doesn't drown actual content changes in CSS noise. */
+
+  :root {
+    /* Oregon Tech palette: navy #033a6b + gold #FFD24F */
+    --bg-0: #04111f; --bg-1: #08192e; --bg-2: #0e2542;
+    /* --text-dim was #7088a3 (fails WCAG AA on the bg-2 panels at 4.33:1).
+       Lifted to #8499b5 to pass AA on both bg-1 (~5.99:1) and bg-2 (~5.42:1). */
+    --border: #1a3a5c; --text: #eaf0f6; --text-dim: #8499b5;
+    --accent: #ffd24f; --accent-dim: #8a6e1a;
+    --warn: #ff8c42; --danger: #ff5e5e; --info: #6cb6ff; --magenta: #d484ff;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    background: var(--bg-0); color: var(--text);
+    font-family: 'JetBrains Mono', 'Courier New', monospace;
+    font-size: 13px; line-height: 1.5; height: 100vh; overflow-x: hidden;
+  }
+  body { display: flex; flex-direction: column; }
+  body::before {
+    content: ''; position: fixed; inset: 0;
+    background: repeating-linear-gradient(0deg,
+      rgba(255,210,79,.02) 0, rgba(255,210,79,.02) 1px,
+      transparent 1px, transparent 3px);
+    pointer-events: none; z-index: 1000;
+  }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(255,210,79,.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,210,79,.025) 1px, transparent 1px);
+    background-size: 32px 32px;
+    pointer-events: none; z-index: -1;
+  }
+
+  /* TOPBAR */
+  .topbar { display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 1px solid var(--border); padding: 8px 20px; background: var(--bg-1);
+    flex-wrap: wrap; gap: 8px; row-gap: 6px; }
+  .topbar-left { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; row-gap: 6px; }
+  .topbar-right { display: flex; align-items: center; gap: 12px; flex-shrink: 0; flex-wrap: nowrap; }
+  .topbar-brand { color: var(--accent); font-weight: 700; letter-spacing: .05em;
+    cursor: pointer; user-select: none; transition: text-shadow .15s;
+    display: inline-flex; align-items: center; gap: 10px; }
+  .topbar-brand:hover { text-shadow: 0 0 8px var(--accent-dim); }
+  .topbar-logo { height: 75px; width: auto; display: block; flex-shrink: 0; }
+  @media (max-width: 600px) { .topbar-logo { height: 48px; } }
+  .tabs { display: flex; gap: 0; flex-wrap: wrap; }
+  .tab { padding: 4px 14px; color: var(--text-dim); border-right: 1px solid var(--border);
+    cursor: pointer; transition: all .15s; text-decoration: none; background: none; border-top: none; border-bottom: none; border-left: none; font: inherit;
+    white-space: nowrap; }
+  .tab:first-child { border-left: 1px solid var(--border); }
+  /* Tab-specific default color — declared BEFORE .active/:hover so those still override */
+  .tab.tab-ctf { color: var(--magenta); }
+  .tab.active { background: var(--bg-2); color: var(--accent); }
+  .tab:hover { color: var(--accent); }
+  .tab-count { color: var(--text-dim); font-size: 11px; padding: 4px 12px; }
+  .btn-register { background: var(--accent); color: var(--bg-0); padding: 6px 16px;
+    text-decoration: none; font-weight: 700; transition: all .15s;
+    display: inline-flex; align-items: center; gap: 6px; cursor: pointer; border: none; font: inherit; }
+  .btn-register:hover { background: var(--warn); box-shadow: 0 0 20px var(--accent); }
+  .btn-register::before { content: '['; opacity: .6; }
+  .btn-register::after { content: ']'; opacity: .6; }
+
+  /* LAYOUT */
+  .layout { display: grid; grid-template-columns: 280px 1fr 280px;
+    grid-template-rows: minmax(0, 1fr);
+    gap: 12px; padding: 12px; flex: 1; min-height: 0; overflow: hidden; }
+  .col { display: flex; flex-direction: column; gap: 12px; min-height: 0; overflow: hidden; }
+
+  /* Tablet & mobile: single column, terminal first, sides stack below */
+  @media (max-width: 1100px) {
+    html, body { height: auto; }
+    body { display: block; }
+    .layout {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: none;
+      flex: none;
+      height: auto;
+      overflow: visible;
+      max-width: 100%;
+    }
+    /* min-width:0 lets flex/grid children actually shrink below their min-content size */
+    .col { overflow: visible; overflow-x: hidden; min-width: 0; max-width: 100%; }
+    .col > .panel { min-width: 0; max-width: 100%; }
+    .layout > main.col { order: 1; }
+    .layout > aside.col:first-of-type { order: 2; }
+    .layout > aside.col:last-of-type { order: 3; }
+    /* Override the desktop flex sizing — give the terminal a real height */
+    .layout > main.col > .panel { flex: none !important; min-height: 0 !important; }
+    #term { flex: none !important; height: 60vh !important; min-height: 400px !important; }
+  }
+
+  /* Phones: tighter spacing + smaller terminal */
+  @media (max-width: 600px) {
+    .layout { padding: 8px; gap: 8px; }
+    .topbar { padding: 6px 10px; }
+    .topbar-left { gap: 8px; row-gap: 6px; }
+    .topbar-brand { font-size: 11px; }
+    .tab { padding: 4px 8px; font-size: 11px; }
+    .tab-count, .score-badge { font-size: 10px; }
+    .btn-register { padding: 5px 10px; font-size: 11px; }
+    #term { height: 55vh !important; min-height: 320px !important; }
+    .ascii-art { font-size: 6.5px; }
+    .statusbar { font-size: 10px; }
+    .status-cell { padding: 3px 6px; }
+    .status-mode { padding: 3px 8px; }
+  }
+
+  /* PANELS */
+  .panel { background: var(--bg-1); border: 1px solid var(--border); position: relative; }
+  .panel-header { display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 12px; border-bottom: 1px solid var(--border);
+    color: var(--text-dim); font-size: 11px; text-transform: uppercase; letter-spacing: .1em; }
+  .panel-header-icon { color: var(--warn); }
+  .panel-body { padding: 12px; }
+
+  /* STATS */
+  .stat-row { display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 6px; font-size: 12px; }
+  .stat-label { color: var(--text-dim); text-transform: uppercase; letter-spacing: .05em; }
+  .stat-value { color: var(--text); }
+  .stat-value.hi { color: var(--warn); }
+  .progress { height: 6px; background: var(--bg-2); border: 1px solid var(--border);
+    margin-bottom: 10px; overflow: hidden; position: relative; }
+  .progress-fill { height: 100%; background: var(--accent); transition: width .6s ease; position: relative; }
+  .progress-fill.warn { background: var(--warn); }
+  /* Note: bars still animate their *width* via the transition above when CPU/RAM
+     values jitter. The translucent-white sweeping shimmer overlay was removed
+     (it flashed every 2s and was distracting in the user's peripheral vision). */
+  .sparkline { display: block; width: 100%; height: 24px; margin: 4px 0 8px;
+    background: var(--bg-2); border: 1px solid var(--border); }
+  .sparkline polyline { fill: none; stroke: var(--info); stroke-width: 1.2;
+    stroke-linecap: round; stroke-linejoin: round;
+    filter: drop-shadow(0 0 2px var(--info));
+    transition: stroke-dashoffset .3s linear; }
+  .core-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 8px; }
+  .core { text-align: center; padding: 4px; background: var(--bg-2); border: 1px solid var(--border); font-size: 10px; }
+  .core-label { color: var(--text-dim); }
+  .core-val { color: var(--accent); font-weight: 700; }
+
+  /* PROCESSES */
+  .proc-table { width: 100%; font-size: 11px; border-collapse: collapse; }
+  .proc-table th { text-align: left; color: var(--text-dim); font-weight: 400; font-size: 10px;
+    text-transform: uppercase; padding: 4px 6px; border-bottom: 1px solid var(--border); }
+  .proc-table td { padding: 4px 6px; border-bottom: 1px dotted var(--border); }
+  .proc-table tr:hover { background: var(--bg-2); }
+  .proc-pid { color: var(--text-dim); }
+  .proc-name { color: var(--info); }
+
+  /* ASCII + WELCOME */
+  .ascii-art { color: var(--accent); font-size: 11px; line-height: 1.1; white-space: pre;
+    text-shadow: 0 0 8px var(--accent-dim); overflow: hidden; margin-bottom: 16px; }
+  @media (max-width: 700px) { .ascii-art { font-size: 7px; } }
+  .welcome { padding: 16px 0; }
+  .welcome-line { color: var(--text); margin-bottom: 4px; }
+  .welcome-line .prompt { color: var(--accent); }
+  .welcome-line .key { color: var(--warn); }
+  .welcome-line .val { color: var(--info); }
+
+  /* TERMINAL */
+  .terminal { background: var(--bg-0); border: 1px solid var(--border);
+    padding: 12px; font-size: 12px; height: 420px;
+    margin-top: 12px; cursor: text;
+    display: flex; flex-direction: column; min-height: 0;
+    overflow-y: auto; }
+  .terminal:focus-within { box-shadow: 0 0 0 1px var(--accent), 0 0 20px var(--accent-dim); }
+  .term-output { flex: 0 0 auto; }
+  .term-line { white-space: pre-wrap; word-break: break-word; margin-bottom: 2px; }
+  .term-line.prompt-line { display: flex; gap: 6px; align-items: baseline; flex-wrap: nowrap; min-width: 0; }
+  .term-line.prompt-line .term-cmd { white-space: pre-wrap; word-break: break-word; min-width: 0; }
+  .term-prompt { color: var(--accent); flex-shrink: 0; white-space: nowrap; }
+  .term-path { color: var(--info); flex-shrink: 0; white-space: nowrap; }
+  .term-dollar { color: var(--text-dim); flex-shrink: 0; }
+  .term-cmd { color: var(--text); }
+  .term-out-info { color: var(--info); }
+  .term-out-ok { color: var(--accent); }
+  .term-out-warn { color: var(--warn); }
+  .term-out-err { color: var(--danger); }
+  .term-out-dim { color: var(--text-dim); }
+  .term-out-mag { color: var(--magenta); }
+  .term-out a { color: var(--info); text-decoration: underline; }
+  .term-out a:hover { color: var(--accent); }
+  .term-input-line { display: flex; gap: 6px; align-items: baseline; flex-wrap: nowrap; min-width: 0; }
+  .term-input { flex: 1; min-width: 0; background: transparent; border: none; outline: none;
+    color: var(--text); font: inherit;
+    caret-color: var(--accent); caret-shape: block; }
+  .terminal,
+  #activity-log { scrollbar-color: var(--accent-dim) var(--bg-0); scrollbar-width: thin; }
+  .terminal::-webkit-scrollbar,
+  #activity-log::-webkit-scrollbar { width: 10px; }
+  .terminal::-webkit-scrollbar-track,
+  #activity-log::-webkit-scrollbar-track { background: var(--bg-0); border-left: 1px solid var(--border); }
+  .terminal::-webkit-scrollbar-thumb,
+  #activity-log::-webkit-scrollbar-thumb { background: var(--accent-dim); border: 2px solid var(--bg-0); border-radius: 0; }
+  .terminal::-webkit-scrollbar-thumb:hover,
+  #activity-log::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+
+  /* PAGES (SPA-style content swap) */
+  .page { display: none; }
+  .page.active { display: block; animation: fadeIn .3s ease; }
+  .page h2 {
+    color: var(--accent); font-size: 14px; text-transform: uppercase;
+    letter-spacing: .15em; margin-bottom: 12px; padding-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+  }
+  .page h2::before { content: '$ cat '; color: var(--text-dim); }
+  .page p { margin-bottom: 12px; max-width: 70ch; }
+  .page ul { list-style: none; padding-left: 0; margin-bottom: 12px; }
+  .page ul li { padding: 4px 0; padding-left: 16px; position: relative; }
+  .page ul li::before { content: '▸'; position: absolute; left: 0; color: var(--accent); }
+  .event-card { display: grid; grid-template-columns: 100px 1fr; gap: 12px;
+    padding: 10px; background: var(--bg-2); border-left: 3px solid var(--accent);
+    margin-bottom: 8px; }
+  .event-date { color: var(--warn); font-weight: 700; }
+  .event-title { color: var(--info); font-weight: 700; }
+  .event-where { color: var(--text-dim); font-size: 11px; }
+  .contact-grid { display: grid; grid-template-columns: 120px 1fr; gap: 8px 16px; max-width: 500px; }
+  .contact-grid dt { color: var(--text-dim); }
+  .contact-grid dd a { color: var(--accent); text-decoration: none; }
+  .contact-grid dd a:hover { text-decoration: underline; }
+
+  /* INFO ROWS */
+  .info-row { display: flex; justify-content: space-between; padding: 6px 0;
+    border-bottom: 1px dotted var(--border); font-size: 12px;
+    align-items: flex-start; gap: 8px; }
+  .info-row:last-child { border-bottom: none; }
+  /* Label never wraps — keeps the column on one line even when the value wraps to multiple. */
+  .info-key { color: var(--text-dim); flex-shrink: 0; white-space: nowrap; }
+  /* Value right-aligns each line so wrapped text reads cleanly against the right edge. */
+  .info-val { color: var(--accent); text-align: right; }
+  /* Underline only the clickable values (Members → contact, Term highlight → events) */
+  a.info-val:hover { text-decoration: underline; }
+
+  /* LINKS / LOGS */
+  .links-list { list-style: none; }
+  .links-list li { padding: 6px 0; border-bottom: 1px dotted var(--border); }
+  .links-list a { color: var(--text); text-decoration: none;
+    display: flex; align-items: center; gap: 8px; transition: all .15s; }
+  .links-list a:hover { color: var(--accent); transform: translateX(4px); }
+  .links-list a::before { content: '→'; color: var(--accent); }
+  .log-line { font-size: 11px; padding: 2px 0; color: var(--text-dim); }
+  .log-tag { display: inline-block; width: 56px; font-weight: 700; }
+  .log-info .log-tag { color: var(--info); }
+  .log-ok   .log-tag { color: var(--accent); }
+  .log-warn .log-tag { color: var(--warn); }
+
+  /* CTF SCORE BADGE */
+  .score-badge { color: var(--magenta); font-size: 11px; padding: 4px 10px;
+    border: 1px solid var(--magenta); background: rgba(212,132,255,0.1); }
+
+  /* QR WIDGET — only rendered when shouldShowQr() is true (see JS).
+     Fixed bottom-right kiosk-style "scan to visit" panel.
+     The QR image is fetched from api.qrserver.com on demand — if the
+     service is unreachable, onerror hides the widget so the page still works. */
+  .qr-widget {
+    position: fixed; bottom: 44px; right: 14px; z-index: 50;
+    background: var(--bg-1); border: 1px solid var(--accent);
+    padding: 10px; box-shadow: 0 4px 18px rgba(0,0,0,.5);
+    animation: fadeIn .4s ease backwards; animation-delay: .4s;
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+  }
+  .qr-widget[hidden] { display: none; }
+  .qr-widget img {
+    display: block; width: 240px; height: 240px;
+    background: #fff; padding: 10px; box-sizing: content-box;
+    image-rendering: pixelated;
+  }
+  .qr-widget-label {
+    font-family: 'JetBrains Mono', monospace; font-size: 20px;
+    color: var(--accent); letter-spacing: .08em; text-transform: uppercase;
+    text-align: center; font-weight: 700;
+  }
+  .qr-widget-label .qr-arrow { color: var(--text-dim); margin: 0 4px; }
+  /* Live solve count below the scan→site label. JS unhides this line only
+     when /api/stats answers — otherwise it stays hidden so the kiosk
+     widget doesn't show "…" forever on offline previews. */
+  .qr-widget-stat {
+    font-family: 'JetBrains Mono', monospace; font-size: 17px;
+    color: var(--text-dim); text-align: center;
+  }
+  .qr-widget-stat strong { color: var(--accent); font-weight: 700; }
+  @media (max-width: 720px) {
+    .qr-widget { bottom: 38px; right: 8px; padding: 8px; }
+    .qr-widget img { width: 160px; height: 160px; padding: 6px; }
+    .qr-widget-label { font-size: 14px; }
+    .qr-widget-stat { font-size: 12px; }
+  }
+
+  /* STATUS BAR */
+  .statusbar { display: flex; align-items: center; flex-wrap: wrap; background: var(--accent);
+    color: var(--bg-0); font-size: 11px; font-weight: 700; letter-spacing: .05em; min-width: 0; }
+  .status-mode { background: var(--bg-0); color: var(--accent); padding: 4px 12px;
+    border-right: 2px solid var(--accent); }
+  .status-cell { padding: 4px 12px; border-right: 1px solid rgba(0,0,0,.2); }
+  .status-spacer { flex: 1; }
+  .status-cell.right { border-right: none; border-left: 1px solid rgba(0,0,0,.2); }
+
+  .panel { animation: fadeIn .6s ease backwards; }
+  .panel:nth-child(1) { animation-delay: .05s; }
+  .panel:nth-child(2) { animation-delay: .15s; }
+  .panel:nth-child(3) { animation-delay: .25s; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* Accessibility: respect users who've opted out of motion at the OS level.
+     Disables panel fade-in, hover transitions, etc. The terminal typewriter
+     effect is dropped in JS by checking the same media query (LINE_DELAY → 0). */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }

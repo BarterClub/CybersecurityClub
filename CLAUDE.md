@@ -5,14 +5,14 @@
 
 ## Overview
 
-A single-file HTML website for the OIT Cybersecurity Club Portland (Oregon Tech's Portland-Metro campus). Terminal-aesthetic UI inspired by [beaverhacks.org](https://beaverhacks.org/). Includes a working in-browser command terminal, simulated system stats, animated UI, SPA-style navigation, and an **10-challenge CTF mode** with a real Python REPL via Pyodide.
+A static HTML/CSS/JS website for the OIT Cybersecurity Club Portland (Oregon Tech's Portland-Metro campus). Terminal-aesthetic UI inspired by [beaverhacks.org](https://beaverhacks.org/). Includes a working in-browser command terminal, simulated system stats, animated UI, SPA-style navigation, and a **10-challenge CTF mode** with a real Python REPL via Pyodide.
 
 ## Architecture
 
-- **Single-file**: All HTML, CSS, and JS live in `index.html` (~1760 lines).
+- **Three-file site**: `index.html` (HTML body + small `<script>` with `CONFIG` at the top), `styles.css` (all CSS), `app.js` (all client-side JS — terminal engine, COMMANDS, CTF, page printers, applyConfig, boot). Was originally one file; split when it grew past ~2200 lines for editor ergonomics and PR diff readability. The CONFIG block stays inlined at the top of `index.html` so club admins can find it without reading three files.
 - **No build step**: Pure static HTML. Open directly in a browser, or serve with any static server.
 - **One runtime dependency**: [Pyodide](https://pyodide.org) (loaded lazily from jsDelivr CDN when the `python` command is first used; ~10 MB).
-- **Embedded image assets**: Two images are base64-embedded in the HTML to keep the single-file model intact:
+- **Embedded image assets**: Two images are base64-embedded in `index.html` rather than served as separate files (keeps the deploy bundle small and lets the page render before any image fetches):
   - Topbar logo (Oregon Tech Owls athletics mark, ~9 KB)
   - Favicon (Hootie owl head, 32×32 PNG, ~2 KB)
 - **Deployment**: Cloudflare Workers Static Assets via `wrangler.jsonc`. The Cloudflare dashboard's deploy command is `npx wrangler versions upload`. `.assetsignore` keeps `CLAUDE.md`, `README.md`, and `wrangler.jsonc` off the public site. Production branch: `main`.
@@ -212,13 +212,13 @@ Invoke from a Claude Code session as the `site-tester` subagent; reports a pass/
 
 - BeaverHacks's actual stack: Next.js 15 (App Router), TypeScript, Tailwind v4, shadcn/ui, PostgreSQL + Prisma, Better Auth, Turborepo + pnpm.
 - For a club site that needs auth, registration, persistent CTF leaderboards, this is a sensible blueprint.
-- For just a homepage with built-in CTFs (what we have now), single-file static is fine and zero-cost to host.
+- For just a homepage with built-in CTFs (what we have now), static HTML+CSS+JS is fine and zero-cost to host.
 
 ## Things to think about before changing
 
 - **Removing the scanline overlay**: Edit `body::before` in CSS. Quick win if it's too intense for an audience.
 - **Switching color schemes**: Change `--accent` and `--accent-dim` at `:root`. Try amber `#ffb454`, cyan `#5fd7ff`, or magenta `#d484ff`. Update the topbar logo + favicon if rebranding away from Oregon Tech.
-- **Adding a backend**: Means leaving the single-file model. Worth doing only if you need persistent state (real leaderboards across browsers, accounts, real shells). Otherwise stay static.
+- **Adding a backend** (beyond the existing tiny `src/worker.js`): Worth doing only if you need persistent per-user state (real leaderboards across browsers, accounts, real shells). The current Worker handles only an anonymous global counter. For more, lean toward CTFd self-hosted rather than building from scratch.
 - **Updating Pyodide**: Test `python` and the CTF challenges that rely on it (#3, #4, #6) before merging.
 
 ## Credits
