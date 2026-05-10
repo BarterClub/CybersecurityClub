@@ -470,6 +470,13 @@ _text
     await slowSolveCount(g);
     await slow('Type <span class="term-out-ok">help</span> for commands. Type <span class="term-out-mag">ctf</span> to start solving challenges.', 'dim', g);
     await slow('New here? Type <span class="term-out-ok">about</span> for how to get started.', 'dim', g);
+    // Nudge anyone who's at 10/10 but hasn't submitted yet — covers users
+    // who completed before the leaderboard feature shipped, and users who
+    // skipped the auto-prompt and have changed their mind.
+    if (ctfState.solved.size === CHALLENGES.length && (!ctfTimer || !ctfTimer.submittedAs)) {
+      await slowBlank(g);
+      await slow(`<span class="term-out-mag">★ You've solved all ${CHALLENGES.length} challenges!</span> Run <span class="term-out-ok">submit</span> to add yourself to the leaderboard.`, '', g);
+    }
   }
 
   async function printAbout() {
@@ -875,17 +882,27 @@ _text
     }},
 
     submit: { desc:'Submit your time to the leaderboard (after solving all challenges)',
-      usage: 'submit <username>',
-      examples: ['submit AlphaHacker', 'submit scott_r'],
-      notes: 'Username: 3-20 chars, A-Z / 0-9 / hyphen / underscore.\nResubmitting with a faster time replaces your existing entry.\nSilently no-ops if the API is unreachable (offline / local preview).',
+      usage: 'submit [username]',
+      examples: ['submit', 'submit AlphaHacker', 'submit scott_r'],
+      notes: 'Username: 3-20 chars, A-Z / 0-9 / hyphen / underscore.\nWith no argument, drops into prompt mode — type the username on the next line.\nResubmitting with a faster time replaces your existing entry.\nSilently no-ops if the API is unreachable (offline / local preview).',
       run: async (a) => {
       const username = (a[0] || '').trim();
-      if (!username) return out('usage: submit &lt;username&gt;', 'err');
-      if (!/^[A-Za-z0-9_-]{3,20}$/.test(username)) {
-        return out('username must be 3-20 chars, A-Z / 0-9 / hyphen / underscore', 'err');
-      }
+      // Must have completed first, regardless of which path we take.
       if (ctfState.solved.size < CHALLENGES.length) {
         return out(`solve all ${CHALLENGES.length} challenges first (${ctfState.solved.size}/${CHALLENGES.length} so far)`, 'err');
+      }
+      // No arg → enter prompt mode so the next typed line is captured as
+      // the username. Mirrors the auto-prompt the page fires on the 10th
+      // flag, but is callable on demand for users whose 10/10 was reached
+      // before the leaderboard feature shipped (no auto-prompt back then)
+      // or who skipped the original prompt and changed their mind.
+      if (!username) {
+        out('Type a username (3-20 chars, A-Z 0-9 - _) on the next line, or `skip` to opt out.', 'dim');
+        submitPromptMode = true;
+        return;
+      }
+      if (!/^[A-Za-z0-9_-]{3,20}$/.test(username)) {
+        return out('username must be 3-20 chars, A-Z / 0-9 / hyphen / underscore', 'err');
       }
       // Make sure timer state reflects the completion (in case they completed
       // in a prior session and the auto-prompt was skipped).
