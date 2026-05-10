@@ -219,7 +219,11 @@ Paste the printed `id` into BOTH `wrangler.jsonc` AND `wrangler-qr.jsonc` → `k
 
 `app.js` calls `/api/stats` at boot and shows the count under the `[ OK ] CTF subsystem ready` line in the boot animation. It also surfaces the count on the home + CTF tabs (via `slowSolveCount()`) and in the QR widget (`#qr-solves`). A 1-hour `setInterval` re-polls `/api/stats` so kiosk displays stay current without a full page reload. The flag command POSTs to `/api/solve` after a successful local solve so the global counter increments.
 
-The leaderboard timer (`oit-cybersec-timer-v1` in localStorage) starts on the first `ctf start <n>` call and stops on the 10th successful flag. The completion handler enters `submitPromptMode` (next typed line is captured as a username and routed to the `submit` command), POSTs to `/api/submit-score`, and stores `submittedAs` so we don't re-prompt. `ctf reset` clears the timer too. The `submit` and `leaderboard` commands are also runnable manually any time.
+The leaderboard timer (`oit-cybersec-timer-v1` in localStorage) starts on the first `ctf start <n>` call (or the first flag submission, whichever comes first) and locks `completedAt` on the 10th successful flag.
+
+**Rolling leaderboard:** the first-solve handler enters `submitPromptMode` (next typed line is captured as a username and routed to the `submit` command). Once a player has a username set in `ctfTimer.submittedAs`, every subsequent flag submission fires `autoSubmitProgress()` — a fire-and-forget POST to `/api/submit-score` that updates the player's row with new points + new elapsed time. The server's `insertOrUpgrade` keeps the better entry per username (more points wins; ties broken by faster time).
+
+If a player types `skip` at the first-solve prompt, `ctfTimer.skipped = true` is set so we don't re-prompt on every subsequent flag. They can still run `submit` manually to opt back in. `ctf reset` clears everything (timer, submittedAs, skipped).
 
 All API calls fail silently if unreachable (e.g. local `python -m http.server` preview); placeholders hide rather than sitting at `…`, and the leaderboard command prints "leaderboard unreachable" instead of erroring.
 

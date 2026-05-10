@@ -163,8 +163,12 @@ async function handleSubmitScore(request, env) {
   const validIds = [...new Set(solvedIds.filter(id =>
     typeof id === 'number' && CHALLENGE_POINTS[id] != null
   ))];
-  if (validIds.length !== TOTAL_CHALLENGES) {
-    return jsonResponse({ error: `must complete all ${TOTAL_CHALLENGES} challenges first` }, 400);
+  // Rolling leaderboard: accept partial progress (1+ valid solves). Players
+  // register their username on the first solve and the entry updates live as
+  // they solve more. The point-based isBetter() ordering keeps partial entries
+  // ranked correctly against completed ones.
+  if (validIds.length < 1) {
+    return jsonResponse({ error: 'must solve at least one challenge first' }, 400);
   }
 
   const elapsedMs = Math.max(0, Math.floor(Number(body && body.elapsedMs) || 0));
@@ -175,7 +179,7 @@ async function handleSubmitScore(request, env) {
   // Server computes points from validIds, not from client-sent total.
   const points = validIds.reduce((sum, id) => sum + CHALLENGE_POINTS[id], 0);
 
-  const entry = { u: username, p: points, t: elapsedMs, ts: Date.now() };
+  const entry = { u: username, p: points, t: elapsedMs, n: validIds.length, ts: Date.now() };
 
   const [current, alltime] = await Promise.all([
     readBoard(env, 'leaderboard:current'),

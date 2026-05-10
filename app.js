@@ -249,10 +249,17 @@
     catch (_) {}
   }
   function startTimerIfFirstRun() {
-    if (!ctfTimer || !ctfTimer.startedAt) {
+    // Idempotent — sets startedAt only if not already set. Preserves any
+    // existing fields on ctfTimer (skipped, submittedAs, etc.) so calling
+    // this after a player skipped doesn't blow away that state.
+    if (!ctfTimer) {
       ctfTimer = { startedAt: Date.now() };
-      saveTimer();
+    } else if (!ctfTimer.startedAt) {
+      ctfTimer.startedAt = Date.now();
+    } else {
+      return;  // already started — no save needed
     }
+    saveTimer();
   }
   function stopTimerOnCompletion() {
     // Create-if-null so pre-existing 10/10 players (whose localStorage
@@ -278,6 +285,22 @@
     if (h) return `${h}h ${m}m ${sec}s`;
     if (m) return `${m}m ${sec}s`;
     return `${sec}s`;
+  }
+
+  // Fire-and-forget POST of the player's current progress to the leaderboard.
+  // Called after every flag solve once the player has a username — so the
+  // board updates live as they progress. Failure is silent (next solve retries).
+  async function autoSubmitProgress() {
+    if (!ctfTimer || !ctfTimer.submittedAs) return;
+    if (ctfState.solved.size < 1) return;
+    const solvedIds = Array.from(ctfState.solved).sort((a, b) => a - b);
+    try {
+      await fetch('/api/submit-score', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: ctfTimer.submittedAs, solvedIds, elapsedMs: elapsedMs() }),
+      });
+    } catch (_) { /* offline / no Worker — ignore */ }
   }
 
   /* ============================================================
@@ -474,12 +497,12 @@ _text
     await slowSolveCount(g);
     await slow('Type <span class="term-out-ok">help</span> for commands. Type <span class="term-out-mag">ctf</span> to start solving challenges.', 'dim', g);
     await slow('New here? Type <span class="term-out-ok">about</span> for how to get started.', 'dim', g);
-    // Nudge anyone who's at 10/10 but hasn't submitted yet — covers users
-    // who completed before the leaderboard feature shipped, and users who
-    // skipped the auto-prompt and have changed their mind.
-    if (ctfState.solved.size === CHALLENGES.length && (!ctfTimer || !ctfTimer.submittedAs)) {
+    // Nudge anyone who's solved anything but hasn't joined the leaderboard.
+    // Lowered from "all 10" to "1+" since the leaderboard is now rolling —
+    // partial-progress entries are valid and update live as you continue.
+    if (ctfState.solved.size >= 1 && (!ctfTimer || (!ctfTimer.submittedAs && !ctfTimer.skipped))) {
       await slowBlank(g);
-      await slow(`<span class="term-out-mag">★ You've solved all ${CHALLENGES.length} challenges!</span> Run <span class="term-out-ok">submit</span> to add yourself to the leaderboard.`, '', g);
+      await slow(`<span class="term-out-mag">★ You've solved ${ctfState.solved.size}/${CHALLENGES.length} challenges.</span> Run <span class="term-out-ok">submit</span> to join the leaderboard — your row updates live as you solve more.`, '', g);
     }
   }
 
@@ -596,19 +619,22 @@ _text
   }
 
   // Render a single board (current OR all-time) inline via slow().
+  // Columns: rank, username (left-pad), solve count (n/10), points, elapsed time.
   async function _slowRenderBoard(title, list, myGen) {
     await slow(title, 'mag', myGen);
     if (!list || !list.length) {
       await slow('  <span class="term-out-dim">(no entries yet — be the first!)</span>', '', myGen);
       return;
     }
+    const total = CHALLENGES.length;
     for (let i = 0; i < list.length; i++) {
       const e = list[i];
       const rank = String(i + 1).padStart(2, ' ');
       const name = String(e.u || '').padEnd(20, ' ');
+      const solved = `${e.n || 0}/${total}`.padStart(5, ' ');
       const pts  = String(e.p || 0).padStart(4, ' ');
       const time = formatElapsed(e.t || 0);
-      await slow(`  <span class="term-out-warn">#${rank}</span>  <span class="term-out-info">${escapeHtml(name)}</span>  ${pts}pts  <span class="term-out-dim">${time}</span>`, '', myGen);
+      await slow(`  <span class="term-out-warn">#${rank}</span>  <span class="term-out-info">${escapeHtml(name)}</span>  <span class="term-out-mag">${solved}</span>  ${pts}pts  <span class="term-out-dim">${time}</span>`, '', myGen);
     }
   }
 
@@ -616,8 +642,8 @@ _text
     const g = printGen;
     await slow('# ranks.json — global CTF leaderboard', 'mag', g);
     await slowBlank(g);
-    await slow('Top 10 players who completed all <span class="term-out-mag">10 challenges</span>, ranked by points (ties broken by faster time).', '', g);
-    await slow('Run <span class="term-out-ok">submit &lt;username&gt;</span> from the terminal after solving all 10 to add yourself.', 'dim', g);
+    await slow('Top 10 players ranked by <span class="term-out-mag">points earned</span> (ties broken by faster time). Updates live as players solve.', '', g);
+    await slow('Run <span class="term-out-ok">submit &lt;username&gt;</span> after your first solve to join — your row climbs as you capture more flags.', 'dim', g);
     await slow('The "this term" board resets each quarter; "all time" is the permanent record.', 'dim', g);
     await slowBlank(g);
     let d;
@@ -840,6 +866,9 @@ _text
       ctfState.solved.add(match.id);
       ctfState.points += match.points;
       saveCtfState();
+      // Ensure the leaderboard timer is running (covers solving without
+      // ever calling `ctf start` — e.g., typing the recon flag directly).
+      startTimerIfFirstRun();
       addActivity('ok', `flag captured: <span class="term-out-mag">#${match.id} ${match.name}</span> +${match.points}pts`);
       out(`✓ CORRECT! Challenge #${match.id} (${match.name}) — +${match.points}pts`, 'ok');
       updateScoreUI();
@@ -853,8 +882,17 @@ _text
       }).then(r => r.ok ? r.json() : null).then(d => {
         if (d && typeof d.total === 'number') updateBootSolves(d.total);
       }).catch(() => {});
-      if (ctfState.solved.size === CHALLENGES.length) {
-        // Stop the leaderboard timer the first time we cross 10/10.
+      // ROLLING LEADERBOARD —
+      // 1) On the FIRST solve, prompt for a username. Subsequent solves
+      //    auto-submit updated progress so the player's row climbs live.
+      // 2) On every subsequent solve, if they have a username, fire an
+      //    auto-submit (fire-and-forget) so the board stays current.
+      // 3) On the 10th solve, lock the timer and celebrate. autoSubmitProgress
+      //    sends the final state with the locked time.
+      const isFirstSolve = (ctfState.solved.size === 1);
+      const isCompletion = (ctfState.solved.size === CHALLENGES.length);
+
+      if (isCompletion) {
         stopTimerOnCompletion();
         const totalTime = formatElapsed(elapsedMs());
         blank();
@@ -863,14 +901,25 @@ _text
         out('  ╚══════════════════════════════════════════╝', 'mag');
         out(`  Total time: <span class="term-out-info">${totalTime}</span>`, '');
         blank();
-        // If they haven't already submitted to the leaderboard, prompt now.
-        if (!ctfTimer || !ctfTimer.submittedAs) {
-          out('Add yourself to the <span class="term-out-mag">leaderboard</span>?', '');
-          out('Type a username (3-20 chars, A-Z 0-9 - _) on the next line, or `skip` to opt out.', 'dim');
-          submitPromptMode = true;
-        } else {
-          out(`Already submitted as <span class="term-out-info">${escapeHtml(ctfTimer.submittedAs)}</span>. Run \`leaderboard\` to see standings.`, 'dim');
+      }
+
+      if (isFirstSolve && (!ctfTimer || !ctfTimer.submittedAs) && !(ctfTimer && ctfTimer.skipped)) {
+        // First solve — prompt for a leaderboard username. Their entry will
+        // update live as they continue solving (one row per username, latest
+        // / best state wins).
+        out('<span class="term-out-mag">First solve!</span> Add yourself to the <span class="term-out-mag">leaderboard</span> so your row updates live as you climb.', '');
+        out('Type a username (3-20 chars, A-Z 0-9 - _) on the next line, or `skip` to play privately.', 'dim');
+        submitPromptMode = true;
+      } else if (ctfTimer && ctfTimer.submittedAs) {
+        // Already on the leaderboard — fire an updated entry in the background.
+        autoSubmitProgress();
+        if (isCompletion) {
+          out(`Final entry submitted as <span class="term-out-info">${escapeHtml(ctfTimer.submittedAs)}</span>. Run \`leaderboard\` to see standings.`, 'dim');
         }
+      } else if (isCompletion && ctfTimer && ctfTimer.skipped) {
+        // They skipped the first-solve prompt but completed everything anyway.
+        // Offer one more chance to register.
+        out('You skipped the leaderboard at first solve. Want to submit your final time now? Run <span class="term-out-ok">submit</span>.', 'dim');
       }
     }},
 
@@ -885,21 +934,21 @@ _text
       }
     }},
 
-    submit: { desc:'Submit your time to the leaderboard (after solving all challenges)',
+    submit: { desc:'Join the leaderboard (any time after your first solve)',
       usage: 'submit [username]',
       examples: ['submit', 'submit AlphaHacker', 'submit scott_r'],
-      notes: 'Username: 3-20 chars, A-Z / 0-9 / hyphen / underscore.\nWith no argument, drops into prompt mode — type the username on the next line.\nResubmitting with a faster time replaces your existing entry.\nSilently no-ops if the API is unreachable (offline / local preview).',
+      notes: 'Username: 3-20 chars, A-Z / 0-9 / hyphen / underscore.\nWith no argument, drops into prompt mode — type the username on the next line.\nRolling leaderboard: each subsequent solve updates your row live (more points / faster time wins).\nSilently no-ops if the API is unreachable (offline / local preview).',
       run: async (a) => {
       const username = (a[0] || '').trim();
-      // Must have completed first, regardless of which path we take.
-      if (ctfState.solved.size < CHALLENGES.length) {
-        return out(`solve all ${CHALLENGES.length} challenges first (${ctfState.solved.size}/${CHALLENGES.length} so far)`, 'err');
+      // Rolling-leaderboard semantics: at least one solve is required, but
+      // you don't need to be complete. Your entry updates live as you go.
+      if (ctfState.solved.size < 1) {
+        return out('solve at least one challenge first', 'err');
       }
       // No arg → enter prompt mode so the next typed line is captured as
-      // the username. Mirrors the auto-prompt the page fires on the 10th
-      // flag, but is callable on demand for users whose 10/10 was reached
-      // before the leaderboard feature shipped (no auto-prompt back then)
-      // or who skipped the original prompt and changed their mind.
+      // the username. Same prompt the page fires on the first solve, but
+      // user-invokable any time (e.g., they skipped earlier and changed
+      // their mind, or are running through a fresh session).
       if (!username) {
         out('Type a username (3-20 chars, A-Z 0-9 - _) on the next line, or `skip` to opt out.', 'dim');
         submitPromptMode = true;
@@ -908,9 +957,10 @@ _text
       if (!/^[A-Za-z0-9_-]{3,20}$/.test(username)) {
         return out('username must be 3-20 chars, A-Z / 0-9 / hyphen / underscore', 'err');
       }
-      // Make sure timer state reflects the completion (in case they completed
-      // in a prior session and the auto-prompt was skipped).
-      stopTimerOnCompletion();
+      // Make sure the timer is running (covers the case of registering at
+      // partial progress without having run `ctf start`). We don't lock
+      // completedAt here — only the 10/10 celebration branch does that.
+      startTimerIfFirstRun();
       const elapsed = elapsedMs();
       const solvedIds = Array.from(ctfState.solved).sort((a, b) => a - b);
       out(`submitting <span class="term-out-info">${escapeHtml(username)}</span> (${formatElapsed(elapsed)})...`, 'dim');
@@ -1481,7 +1531,12 @@ ${bot}
     if (submitPromptMode) {
       submitPromptMode = false;
       if (line.toLowerCase() === 'skip' || line === '') {
-        out('skipped — leaderboard submission canceled. You can run `submit <username>` later.', 'dim');
+        // Remember the skip so we don't re-prompt on every subsequent solve.
+        // (User can still run `submit <name>` manually later.)
+        if (!ctfTimer) ctfTimer = { startedAt: Date.now() };
+        ctfTimer.skipped = true;
+        saveTimer();
+        out('skipped — playing privately. Run `submit <username>` any time to join the leaderboard.', 'dim');
         return;
       }
       try { await COMMANDS.submit.run([line]); }
