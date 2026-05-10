@@ -83,8 +83,8 @@
   /* ============================================================
      TAB / PAGE SWITCHING
      ============================================================ */
-  const PAGES = ['home', 'about', 'events', 'contact', 'ctf'];
-  const FILES = { home:'index.tsx', about:'about.md', events:'events.json', contact:'contact.sh', ctf:'ctf.md' };
+  const PAGES = ['home', 'about', 'events', 'contact', 'ctf', 'leaderboard'];
+  const FILES = { home:'index.tsx', about:'about.md', events:'events.json', contact:'contact.sh', ctf:'ctf.md', leaderboard:'ranks.json' };
   function switchTab(name) {
     if (!PAGES.includes(name)) return;
     document.querySelectorAll('.tab').forEach(t =>
@@ -584,9 +584,48 @@ _text
     await slow('Progress is saved in this browser via localStorage — survives reloads, but not incognito or other browsers.', 'dim', g);
   }
 
+  // Render a single board (current OR all-time) inline via slow().
+  async function _slowRenderBoard(title, list, myGen) {
+    await slow(title, 'mag', myGen);
+    if (!list || !list.length) {
+      await slow('  <span class="term-out-dim">(no entries yet — be the first!)</span>', '', myGen);
+      return;
+    }
+    for (let i = 0; i < list.length; i++) {
+      const e = list[i];
+      const rank = String(i + 1).padStart(2, ' ');
+      const name = String(e.u || '').padEnd(20, ' ');
+      const pts  = String(e.p || 0).padStart(4, ' ');
+      const time = formatElapsed(e.t || 0);
+      await slow(`  <span class="term-out-warn">#${rank}</span>  <span class="term-out-info">${escapeHtml(name)}</span>  ${pts}pts  <span class="term-out-dim">${time}</span>`, '', myGen);
+    }
+  }
+
+  async function printLeaderboard() {
+    const g = printGen;
+    await slow('# ranks.json — global CTF leaderboard', 'mag', g);
+    await slowBlank(g);
+    await slow('Top 10 players who completed all <span class="term-out-mag">10 challenges</span>, ranked by points (ties broken by faster time).', '', g);
+    await slow('Run <span class="term-out-ok">submit &lt;username&gt;</span> from the terminal after solving all 10 to add yourself.', 'dim', g);
+    await slow('The "this term" board resets each quarter; "all time" is the permanent record.', 'dim', g);
+    await slowBlank(g);
+    let d;
+    try {
+      const r = await fetch('/api/leaderboard');
+      if (!r.ok) throw new Error(r.status);
+      d = await r.json();
+    } catch (_) {
+      await slow('<span class="term-out-err">leaderboard unreachable</span> <span class="term-out-dim">(offline / local preview)</span>', '', g);
+      return;
+    }
+    await _slowRenderBoard('── THIS TERM ──', d && d.current, g);
+    await slowBlank(g);
+    await _slowRenderBoard('── ALL TIME ──', d && d.alltime, g);
+  }
+
   async function printPage(name) {
     printGen++;  // any in-flight print sees a stale gen and flushes instantly
-    const printers = { home: printHome, about: printAbout, events: printEvents, contact: printContact, ctf: printCtf };
+    const printers = { home: printHome, about: printAbout, events: printEvents, contact: printContact, ctf: printCtf, leaderboard: printLeaderboard };
     const fn = printers[name];
     if (!fn) return;
     // Scroll to bottom first so the typewriter effect happens in view
@@ -874,33 +913,7 @@ _text
       }
     }},
 
-    leaderboard: { desc:'Show the CTF leaderboard (top 10 each: this term + all-time)',
-      usage: 'leaderboard',
-      run: async () => {
-      out('fetching leaderboard...', 'dim');
-      let d;
-      try {
-        const r = await fetch('/api/leaderboard');
-        d = await r.json();
-      } catch (e) {
-        return out('leaderboard unreachable (offline / local preview)', 'err');
-      }
-      const renderBoard = (title, list) => {
-        out(title, 'mag');
-        if (!list || !list.length) { out('  (no entries yet — be the first!)', 'dim'); return; }
-        list.forEach((e, i) => {
-          const rank = String(i + 1).padStart(2, ' ');
-          const name = String(e.u || '').padEnd(20, ' ');
-          const pts  = String(e.p || 0).padStart(4, ' ');
-          const time = formatElapsed(e.t || 0);
-          out(`  <span class="term-out-warn">#${rank}</span>  <span class="term-out-info">${escapeHtml(name)}</span>  ${pts}pts  <span class="term-out-dim">${time}</span>`);
-        });
-      };
-      blank();
-      renderBoard('── THIS TERM ──', d && d.current);
-      blank();
-      renderBoard('── ALL TIME ──', d && d.alltime);
-    }},
+    leaderboard: { desc:'Show the CTF leaderboard (top 10 each: this term + all-time)', run: () => switchTab('leaderboard') },
 
     hint: { desc:'Show a CTF challenge hint',
       usage: 'hint [n|name]',
