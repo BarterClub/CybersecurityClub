@@ -72,9 +72,12 @@
     const pad = n => n.toString().padStart(2, '0');
     document.getElementById('clock').textContent =
       pad(now.getHours())+':'+pad(now.getMinutes())+':'+pad(now.getSeconds());
-    const e = Math.floor((Date.now()-start)/1000);
-    document.getElementById('uptime').textContent =
-      pad(Math.floor(e/3600))+':'+pad(Math.floor((e%3600)/60))+':'+pad(e%60);
+    // Note: there used to be a paired #uptime element rendered in the
+    // status bar that this loop also updated. The element was removed
+    // during a layout pass; the JS update was orphaned and threw
+    // "Cannot set properties of null" once a second. The `uptime`
+    // terminal command (defined separately) still works — it computes
+    // uptime on demand from `start`.
   }, 1000);
 
   /* ============================================================
