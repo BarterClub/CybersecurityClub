@@ -232,6 +232,51 @@
   updateScoreUI();
 
   /* ============================================================
+     CTF TIMER — starts on first `ctf start <n>`, stops on the
+     10th successful flag. Stored in localStorage so reloads
+     mid-attempt don't reset the clock. Drives the leaderboard
+     submission's elapsed-time field.
+     ============================================================ */
+  const CTF_TIMER_KEY = 'oit-cybersec-timer-v1';
+  let ctfTimer = null;  // {startedAt, completedAt?, submittedAs?}
+  try {
+    const raw = localStorage.getItem(CTF_TIMER_KEY);
+    if (raw) ctfTimer = JSON.parse(raw);
+  } catch (_) { /* corrupt — ignore */ }
+
+  function saveTimer() {
+    try { localStorage.setItem(CTF_TIMER_KEY, JSON.stringify(ctfTimer)); }
+    catch (_) {}
+  }
+  function startTimerIfFirstRun() {
+    if (!ctfTimer || !ctfTimer.startedAt) {
+      ctfTimer = { startedAt: Date.now() };
+      saveTimer();
+    }
+  }
+  function stopTimerOnCompletion() {
+    if (ctfTimer && !ctfTimer.completedAt) {
+      ctfTimer.completedAt = Date.now();
+      saveTimer();
+    }
+  }
+  function elapsedMs() {
+    if (!ctfTimer || !ctfTimer.startedAt) return 0;
+    const end = ctfTimer.completedAt || Date.now();
+    return Math.max(0, end - ctfTimer.startedAt);
+  }
+  // Format ms as "Xh Ym Zs" (omitting empty leading units)
+  function formatElapsed(ms) {
+    const s = Math.floor(ms / 1000);
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = s % 60;
+    if (h) return `${h}h ${m}m ${sec}s`;
+    if (m) return `${m}m ${sec}s`;
+    return `${sec}s`;
+  }
+
+  /* ============================================================
      PYODIDE LOADER (real Python, on demand)
      ============================================================ */
   let pyodide = null;
@@ -296,6 +341,9 @@
      PYTHON REPL — interactive mode state, evaluator, prompt switch
      ============================================================ */
   let pythonMode = false;
+  // When true, the next line of input is captured as a leaderboard username
+  // rather than executed as a command. Set after a 10/10 completion.
+  let submitPromptMode = false;
 
   function updatePromptUI() {
     const line = document.querySelector('.term-input-line');
@@ -586,7 +634,7 @@ _text
         'System':    ['whoami','uname','date','uptime','history','echo','neofetch'],
         'Tools':     ['base64','rot13','hash','python','py','fortune','cowsay','banner'],
         'Club':      ['join','roster','next','discord','roost','signup'],
-        'CTF':       ['ctf','flag','hint','score'],
+        'CTF':       ['ctf','flag','hint','score','submit','leaderboard'],
         'Misc':      ['matrix','sudo','vim','emacs','rm','clear','exit','help','h'],
       };
       const seen = new Set();
@@ -693,6 +741,8 @@ _text
         const ch = CHALLENGES.find(c => c.id === n);
         if (!ch) return out('usage: ctf start <number>   (1-'+CHALLENGES.length+')', 'err');
         ctfState.activeChallenge = ch.id;
+        // Start the leaderboard timer the first time the player engages.
+        startTimerIfFirstRun();
         out(`── Challenge #${ch.id}: ${ch.name} (${ch.points}pts) ──`, 'mag');
         out(ch.brief);
         blank();
@@ -706,6 +756,9 @@ _text
         ctfState.activeChallenge = null;
         saveCtfState();
         updateScoreUI();
+        // Clear the leaderboard timer too — the next ctf start kicks off a fresh run.
+        ctfTimer = null;
+        try { localStorage.removeItem(CTF_TIMER_KEY); } catch (_) {}
         out('CTF progress cleared.', 'warn');
         return;
       }
@@ -751,10 +804,23 @@ _text
         if (d && typeof d.total === 'number') updateBootSolves(d.total);
       }).catch(() => {});
       if (ctfState.solved.size === CHALLENGES.length) {
+        // Stop the leaderboard timer the first time we cross 10/10.
+        stopTimerOnCompletion();
+        const totalTime = formatElapsed(elapsedMs());
         blank();
         out('  ╔══════════════════════════════════════════╗', 'mag');
         out('  ║  ALL CHALLENGES SOLVED — nice work, hacker. ║', 'mag');
         out('  ╚══════════════════════════════════════════╝', 'mag');
+        out(`  Total time: <span class="term-out-info">${totalTime}</span>`, '');
+        blank();
+        // If they haven't already submitted to the leaderboard, prompt now.
+        if (!ctfTimer || !ctfTimer.submittedAs) {
+          out('Add yourself to the <span class="term-out-mag">leaderboard</span>?', '');
+          out('Type a username (3-20 chars, A-Z 0-9 - _) on the next line, or `skip` to opt out.', 'dim');
+          submitPromptMode = true;
+        } else {
+          out(`Already submitted as <span class="term-out-info">${escapeHtml(ctfTimer.submittedAs)}</span>. Run \`leaderboard\` to see standings.`, 'dim');
+        }
       }
     }},
 
@@ -764,6 +830,76 @@ _text
         const m = ctfState.solved.has(ch.id) ? '<span class="term-out-ok">[✓]</span>' : '<span class="term-out-dim">[ ]</span>';
         out(`  ${m} #${ch.id} ${ch.name}`);
       });
+      if (ctfTimer && ctfTimer.startedAt) {
+        out(`Time elapsed: ${formatElapsed(elapsedMs())}${ctfTimer.completedAt ? ' (final)' : ' (running)'}`, 'dim');
+      }
+    }},
+
+    submit: { desc:'Submit your time to the leaderboard (after solving all challenges)',
+      usage: 'submit <username>',
+      examples: ['submit AlphaHacker', 'submit scott_r'],
+      notes: 'Username: 3-20 chars, A-Z / 0-9 / hyphen / underscore.\nResubmitting with a faster time replaces your existing entry.\nSilently no-ops if the API is unreachable (offline / local preview).',
+      run: async (a) => {
+      const username = (a[0] || '').trim();
+      if (!username) return out('usage: submit &lt;username&gt;', 'err');
+      if (!/^[A-Za-z0-9_-]{3,20}$/.test(username)) {
+        return out('username must be 3-20 chars, A-Z / 0-9 / hyphen / underscore', 'err');
+      }
+      if (ctfState.solved.size < CHALLENGES.length) {
+        return out(`solve all ${CHALLENGES.length} challenges first (${ctfState.solved.size}/${CHALLENGES.length} so far)`, 'err');
+      }
+      // Make sure timer state reflects the completion (in case they completed
+      // in a prior session and the auto-prompt was skipped).
+      stopTimerOnCompletion();
+      const elapsed = elapsedMs();
+      const solvedIds = Array.from(ctfState.solved).sort((a, b) => a - b);
+      out(`submitting <span class="term-out-info">${escapeHtml(username)}</span> (${formatElapsed(elapsed)})...`, 'dim');
+      try {
+        const r = await fetch('/api/submit-score', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, solvedIds, elapsedMs: elapsed }),
+        });
+        const d = await r.json().catch(() => null);
+        if (!r.ok || !d || !d.ok) {
+          return out(`✗ ${escapeHtml(d && d.error ? d.error : 'submission failed (' + r.status + ')')}`, 'err');
+        }
+        ctfTimer.submittedAs = username;
+        saveTimer();
+        out(`✓ submitted as <span class="term-out-mag">${escapeHtml(username)}</span>`, 'ok');
+        out(`  this term: rank <span class="term-out-warn">#${d.rankCurrent}</span>${d.rankAllTime ? ` · all-time: <span class="term-out-warn">#${d.rankAllTime}</span>` : ''}`, '');
+        out(`Run \`leaderboard\` to see the full standings.`, 'dim');
+      } catch (e) {
+        out(`✗ submission failed (network unreachable?)`, 'err');
+      }
+    }},
+
+    leaderboard: { desc:'Show the CTF leaderboard (top 10 each: this term + all-time)',
+      usage: 'leaderboard',
+      run: async () => {
+      out('fetching leaderboard...', 'dim');
+      let d;
+      try {
+        const r = await fetch('/api/leaderboard');
+        d = await r.json();
+      } catch (e) {
+        return out('leaderboard unreachable (offline / local preview)', 'err');
+      }
+      const renderBoard = (title, list) => {
+        out(title, 'mag');
+        if (!list || !list.length) { out('  (no entries yet — be the first!)', 'dim'); return; }
+        list.forEach((e, i) => {
+          const rank = String(i + 1).padStart(2, ' ');
+          const name = String(e.u || '').padEnd(20, ' ');
+          const pts  = String(e.p || 0).padStart(4, ' ');
+          const time = formatElapsed(e.t || 0);
+          out(`  <span class="term-out-warn">#${rank}</span>  <span class="term-out-info">${escapeHtml(name)}</span>  ${pts}pts  <span class="term-out-dim">${time}</span>`);
+        });
+      };
+      blank();
+      renderBoard('── THIS TERM ──', d && d.current);
+      blank();
+      renderBoard('── ALL TIME ──', d && d.alltime);
     }},
 
     hint: { desc:'Show a CTF challenge hint',
@@ -1306,6 +1442,18 @@ ${bot}
     if (!line) return;
     history.unshift(line);
     histIdx = -1;
+
+    // ---- Submit-prompt mode: capture next line as a leaderboard username ----
+    if (submitPromptMode) {
+      submitPromptMode = false;
+      if (line.toLowerCase() === 'skip' || line === '') {
+        out('skipped — leaderboard submission canceled. You can run `submit <username>` later.', 'dim');
+        return;
+      }
+      try { await COMMANDS.submit.run([line]); }
+      catch (e) { out('error: '+escapeHtml(e.message||e), 'err'); }
+      return;
+    }
 
     // ---- Python REPL mode: every line goes to the interpreter ----
     if (pythonMode) {

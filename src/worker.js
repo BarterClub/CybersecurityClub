@@ -27,6 +27,17 @@ const KNOWN_HASHES = new Set([
   'fe5284ab', // 10 jwt_tamper
 ]);
 
+// Per-challenge points — duplicated from CHALLENGES in app.js. Server computes
+// total points from the submitted solvedIds rather than trusting client-sent
+// totals (cheap defense against spoofed scores).
+const CHALLENGE_POINTS = {
+  1: 50, 2: 75, 3: 100, 4: 100, 5: 150,
+  6: 200, 7: 175, 8: 125, 9: 150, 10: 175,
+};
+const TOTAL_CHALLENGES = 10;
+const LEADERBOARD_LIMIT = 100;        // max entries kept per board
+const LB_USERNAME_RE = /^[A-Za-z0-9_-]{3,20}$/;
+
 // Same FNV-1a as the page (function intentionally identical to index.html's).
 function fnv1a(s) {
   let h = 0x811c9dc5;
@@ -84,11 +95,121 @@ async function handleSolve(request, env) {
   return jsonResponse({ ok: true, total: next });
 }
 
+// ============================================================================
+// LEADERBOARD
+// ============================================================================
+//
+// Two boards in one KV namespace:
+//   leaderboard:current   — current term, manually reset by an officer each
+//                           quarter via `wrangler kv key delete`. Newcomers
+//                           get a real shot at #1.
+//   leaderboard:alltime   — never reset; bragging-rights record book.
+//
+// Each entry: { u: username, p: points, t: elapsedMs, ts: completedAt }
+// Stored as a JSON array sorted descending by p, ascending by t (faster wins ties).
+// One entry per username per board: re-submission keeps the *better* entry
+// (more points, then faster time).
+
+async function readBoard(env, key) {
+  const raw = await env.STATS.get(key);
+  if (!raw) return [];
+  try { const arr = JSON.parse(raw); return Array.isArray(arr) ? arr : []; }
+  catch (_) { return []; }
+}
+
+function isBetter(a, b) {
+  // Returns true if `a` is a better leaderboard entry than `b`.
+  // Higher points wins; same points, lower elapsed wins.
+  if (a.p !== b.p) return a.p > b.p;
+  return a.t < b.t;
+}
+
+function insertOrUpgrade(list, entry) {
+  // Replace existing entry for this username if the new one is better,
+  // otherwise insert. Keep sorted, cap at LEADERBOARD_LIMIT.
+  const existingIdx = list.findIndex(e => e.u === entry.u);
+  if (existingIdx >= 0) {
+    if (!isBetter(entry, list[existingIdx])) {
+      // New entry isn't an improvement — keep the existing one.
+      return list;
+    }
+    list.splice(existingIdx, 1);
+  }
+  list.push(entry);
+  list.sort((a, b) => isBetter(a, b) ? -1 : (isBetter(b, a) ? 1 : 0));
+  return list.slice(0, LEADERBOARD_LIMIT);
+}
+
+async function handleLeaderboard(env) {
+  const [current, alltime] = await Promise.all([
+    readBoard(env, 'leaderboard:current'),
+    readBoard(env, 'leaderboard:alltime'),
+  ]);
+  return jsonResponse({ current: current.slice(0, 10), alltime: alltime.slice(0, 10) });
+}
+
+async function handleSubmitScore(request, env) {
+  if (request.method !== 'POST') return jsonResponse({ error: 'POST required' }, 405);
+  let body;
+  try { body = await request.json(); }
+  catch (_) { return jsonResponse({ error: 'invalid JSON' }, 400); }
+
+  const username = String((body && body.username) || '').trim();
+  if (!LB_USERNAME_RE.test(username)) {
+    return jsonResponse({ error: 'username must be 3-20 chars, A-Z 0-9 - _' }, 400);
+  }
+
+  const solvedIds = Array.isArray(body && body.solvedIds) ? body.solvedIds : [];
+  const validIds = [...new Set(solvedIds.filter(id =>
+    typeof id === 'number' && CHALLENGE_POINTS[id] != null
+  ))];
+  if (validIds.length !== TOTAL_CHALLENGES) {
+    return jsonResponse({ error: `must complete all ${TOTAL_CHALLENGES} challenges first` }, 400);
+  }
+
+  const elapsedMs = Math.max(0, Math.floor(Number(body && body.elapsedMs) || 0));
+  if (!isFinite(elapsedMs) || elapsedMs > 1000 * 60 * 60 * 24 * 30) {
+    return jsonResponse({ error: 'elapsedMs out of range' }, 400);
+  }
+
+  // Server computes points from validIds, not from client-sent total.
+  const points = validIds.reduce((sum, id) => sum + CHALLENGE_POINTS[id], 0);
+
+  const entry = { u: username, p: points, t: elapsedMs, ts: Date.now() };
+
+  const [current, alltime] = await Promise.all([
+    readBoard(env, 'leaderboard:current'),
+    readBoard(env, 'leaderboard:alltime'),
+  ]);
+  const newCurrent = insertOrUpgrade(current, entry);
+  const newAlltime = insertOrUpgrade(alltime, entry);
+  await Promise.all([
+    env.STATS.put('leaderboard:current', JSON.stringify(newCurrent)),
+    env.STATS.put('leaderboard:alltime', JSON.stringify(newAlltime)),
+  ]);
+
+  // Find the player's rank in each board (1-indexed)
+  const findRank = (list) => {
+    const i = list.findIndex(e => e.u === username);
+    return i < 0 ? null : i + 1;
+  };
+
+  return jsonResponse({
+    ok: true,
+    rankCurrent: findRank(newCurrent),
+    rankAllTime: findRank(newAlltime),
+    current: newCurrent.slice(0, 10),
+    alltime: newAlltime.slice(0, 10),
+  });
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    if (url.pathname === '/api/stats') return handleStats(env);
-    if (url.pathname === '/api/solve') return handleSolve(request, env);
+    if (url.pathname === '/api/stats')        return handleStats(env);
+    if (url.pathname === '/api/solve')        return handleSolve(request, env);
+    if (url.pathname === '/api/leaderboard')  return handleLeaderboard(env);
+    if (url.pathname === '/api/submit-score') return handleSubmitScore(request, env);
     // Everything else → serve from static assets.
     return env.ASSETS.fetch(request);
   },

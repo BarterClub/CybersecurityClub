@@ -174,13 +174,26 @@ That's it. It'll appear in `help`, `help projects` shows usage/examples, and tab
 
 ### Worker (`src/worker.js`) + KV
 
-The deploy is no longer pure-static. `src/worker.js` is a small Cloudflare Worker that handles two API routes and falls through to static assets for everything else:
-- `GET  /api/stats` → `{ total: <int> }` — current global flag-capture counter
-- `POST /api/solve` → `{ flag: string }` → re-hashes (FNV-1a) the submitted flag, verifies against the known-good hash list, increments and returns the counter when valid
+The deploy is no longer pure-static. `src/worker.js` is a small Cloudflare Worker that handles four API routes and falls through to static assets for everything else:
+- `GET  /api/stats`        → `{ total: <int> }` — current global flag-capture counter
+- `POST /api/solve`        → `{ flag: string }` → re-hashes (FNV-1a) the submitted flag, verifies against the known-good hash list, increments and returns the counter when valid
+- `GET  /api/leaderboard`  → `{ current: [...], alltime: [...] }` — top 10 of each board
+- `POST /api/submit-score` → `{ username, solvedIds, elapsedMs }` → validates username, computes points server-side from `solvedIds`, upserts into both boards (better entry per username wins)
 
-Server-side re-hashing is the security boundary: a curl spammer can't inflate the counter without actually knowing a real flag. The hash list duplicates the values in `CHALLENGES` (in `index.html`) intentionally — keep them in sync when adding/rotating challenges.
+Server-side re-hashing is the security boundary: a curl spammer can't inflate the counter without actually knowing a real flag. The hash list duplicates the values in `CHALLENGES` (in `app.js`) intentionally — keep them in sync when adding/rotating challenges. The leaderboard's per-challenge points table (`CHALLENGE_POINTS`) is similarly duplicated and used to compute the score server-side rather than trusting client-sent totals.
 
-Storage is a single Cloudflare Workers KV namespace bound as `STATS`, key `total_solves` (string-encoded int). KV is eventually consistent; for a club-scale counter, occasional duplicate / lost increments are acceptable. If precision ever matters, swap to a Durable Object.
+Storage is a single Cloudflare Workers KV namespace bound as `STATS`. Three keys live there:
+- `total_solves`         (string-encoded int) — global flag-capture counter
+- `leaderboard:current`  (JSON array, max 100 entries) — current term's leaderboard
+- `leaderboard:alltime`  (JSON array, max 100 entries) — never auto-resets
+
+KV is eventually consistent; for club-scale traffic, occasional duplicate / lost writes are acceptable. If precision ever matters, swap to a Durable Object.
+
+**Resetting the per-term leaderboard at the start of each quarter:**
+```
+npx wrangler kv key delete --namespace-id 4e2136877ad141eebd0f96a1798b20d3 leaderboard:current
+```
+The all-time board (`leaderboard:alltime`) is never auto-cleared.
 
 To rotate the KV namespace:
 ```
@@ -190,7 +203,11 @@ Paste the printed `id` into BOTH `wrangler.jsonc` AND `wrangler-qr.jsonc` → `k
 
 **Both Workers run the same `src/worker.js`** and bind to the same `STATS` namespace. KV is account-scoped, so two Workers binding to the same id is fine and intentional — it's how the kiosk gets a live count from the same backing store the production site writes to.
 
-`index.html` calls `/api/stats` at boot and shows the count under the `[ OK ] CTF subsystem ready` line in the boot animation. It also surfaces the count on the home + CTF tabs (via `slowSolveCount()`) and in the QR widget (`#qr-solves`). A 1-hour `setInterval` re-polls `/api/stats` so kiosk displays stay current without a full page reload. The flag command POSTs to `/api/solve` after a successful local solve so the global counter increments. All API calls fail silently if unreachable (e.g. local `python -m http.server` preview); placeholders are hidden rather than sitting at `…`.
+`app.js` calls `/api/stats` at boot and shows the count under the `[ OK ] CTF subsystem ready` line in the boot animation. It also surfaces the count on the home + CTF tabs (via `slowSolveCount()`) and in the QR widget (`#qr-solves`). A 1-hour `setInterval` re-polls `/api/stats` so kiosk displays stay current without a full page reload. The flag command POSTs to `/api/solve` after a successful local solve so the global counter increments.
+
+The leaderboard timer (`oit-cybersec-timer-v1` in localStorage) starts on the first `ctf start <n>` call and stops on the 10th successful flag. The completion handler enters `submitPromptMode` (next typed line is captured as a username and routed to the `submit` command), POSTs to `/api/submit-score`, and stores `submittedAs` so we don't re-prompt. `ctf reset` clears the timer too. The `submit` and `leaderboard` commands are also runnable manually any time.
+
+All API calls fail silently if unreachable (e.g. local `python -m http.server` preview); placeholders hide rather than sitting at `…`, and the leaderboard command prints "leaderboard unreachable" instead of erroring.
 
 To deploy elsewhere:
 - **GitHub Pages, Netlify, Vercel**: just point at the repo. The `wrangler.jsonc` and `.assetsignore` are harmless to other hosts (they'll just sit there unused).
