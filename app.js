@@ -289,17 +289,26 @@
 
   // Fire-and-forget POST of the player's current progress to the leaderboard.
   // Called after every flag solve once the player has a username — so the
-  // board updates live as they progress. Failure is silent (next solve retries).
+  // board updates live as they progress. On success, the API returns the
+  // player's fresh rank on both boards; we cache it on ctfTimer so the
+  // leaderboard tab can show their standing even when their row is off
+  // the visible top 10. Failure is silent (next solve retries).
   async function autoSubmitProgress() {
     if (!ctfTimer || !ctfTimer.submittedAs) return;
     if (ctfState.solved.size < 1) return;
     const solvedIds = Array.from(ctfState.solved).sort((a, b) => a - b);
     try {
-      await fetch('/api/submit-score', {
+      const r = await fetch('/api/submit-score', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: ctfTimer.submittedAs, solvedIds, elapsedMs: elapsedMs() }),
       });
+      const d = await r.json().catch(() => null);
+      if (d && d.ok) {
+        ctfTimer.lastRankCurrent = d.rankCurrent;
+        ctfTimer.lastRankAllTime = d.rankAllTime;
+        saveTimer();
+      }
     } catch (_) { /* offline / no Worker — ignore */ }
   }
 
@@ -620,7 +629,9 @@ _text
 
   // Render a single board (current OR all-time) inline via slow().
   // Columns: rank, username (left-pad), solve count (n/10), points, elapsed time.
-  async function _slowRenderBoard(title, list, myGen) {
+  // If `highlightUsername` matches a row, that row gets a "← you" suffix and
+  // the username color-swaps to warn (orange) so the player can spot themselves.
+  async function _slowRenderBoard(title, list, myGen, highlightUsername) {
     await slow(title, 'mag', myGen);
     if (!list || !list.length) {
       await slow('  <span class="term-out-dim">(no entries yet — be the first!)</span>', '', myGen);
@@ -629,12 +640,15 @@ _text
     const total = CHALLENGES.length;
     for (let i = 0; i < list.length; i++) {
       const e = list[i];
+      const isMe = highlightUsername && e.u === highlightUsername;
       const rank = String(i + 1).padStart(2, ' ');
       const name = String(e.u || '').padEnd(20, ' ');
       const solved = `${e.n || 0}/${total}`.padStart(5, ' ');
       const pts  = String(e.p || 0).padStart(4, ' ');
       const time = formatElapsed(e.t || 0);
-      await slow(`  <span class="term-out-warn">#${rank}</span>  <span class="term-out-info">${escapeHtml(name)}</span>  <span class="term-out-mag">${solved}</span>  ${pts}pts  <span class="term-out-dim">${time}</span>`, '', myGen);
+      const nameClass = isMe ? 'term-out-warn' : 'term-out-info';
+      const suffix = isMe ? ' <span class="term-out-warn">← you</span>' : '';
+      await slow(`  <span class="term-out-warn">#${rank}</span>  <span class="${nameClass}">${escapeHtml(name)}</span>  <span class="term-out-mag">${solved}</span>  ${pts}pts  <span class="term-out-dim">${time}</span>${suffix}`, '', myGen);
     }
   }
 
@@ -655,9 +669,19 @@ _text
       await slow('<span class="term-out-err">leaderboard unreachable</span> <span class="term-out-dim">(offline / local preview)</span>', '', g);
       return;
     }
-    await _slowRenderBoard('── THIS TERM ──', d && d.current, g);
+    const me = (ctfTimer && ctfTimer.submittedAs) || null;
+    await _slowRenderBoard('── THIS TERM ──', d && d.current, g, me);
     await slowBlank(g);
-    await _slowRenderBoard('── ALL TIME ──', d && d.alltime, g);
+    await _slowRenderBoard('── ALL TIME ──', d && d.alltime, g, me);
+    // After both boards, surface the player's standing even if their row
+    // is off the visible top 10. lastRank* is cached from the most recent
+    // submit/auto-submit response.
+    if (me && ctfTimer && (ctfTimer.lastRankCurrent || ctfTimer.lastRankAllTime)) {
+      await slowBlank(g);
+      const cur = ctfTimer.lastRankCurrent ? `this term <span class="term-out-warn">#${ctfTimer.lastRankCurrent}</span>` : 'this term —';
+      const all = ctfTimer.lastRankAllTime ? `all-time <span class="term-out-warn">#${ctfTimer.lastRankAllTime}</span>` : 'all-time —';
+      await slow(`<span class="term-out-dim">Your standing as of last solve:</span> ${cur} · ${all}`, '', g);
+    }
   }
 
   async function printPage(name) {
@@ -975,6 +999,8 @@ _text
           return out(`✗ ${escapeHtml(d && d.error ? d.error : 'submission failed (' + r.status + ')')}`, 'err');
         }
         ctfTimer.submittedAs = username;
+        ctfTimer.lastRankCurrent = d.rankCurrent;
+        ctfTimer.lastRankAllTime = d.rankAllTime;
         saveTimer();
         out(`✓ submitted as <span class="term-out-mag">${escapeHtml(username)}</span>`, 'ok');
         out(`  this term: rank <span class="term-out-warn">#${d.rankCurrent}</span>${d.rankAllTime ? ` · all-time: <span class="term-out-warn">#${d.rankAllTime}</span>` : ''}`, '');
