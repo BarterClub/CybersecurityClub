@@ -213,4 +213,13 @@ export default {
     // Everything else → serve from static assets.
     return env.ASSETS.fetch(request);
   },
+
+  // Scheduled handler — fired by Cloudflare Cron Triggers per the schedule
+  // in wrangler.jsonc. Wipes the per-term leaderboard at the start of each
+  // OIT quarter so newcomers compete on a fresh board. The all-time board
+  // is intentionally left alone.
+  async scheduled(event, env, ctx) {
+    await env.STATS.delete('leaderboard:current');
+    // No return needed — Cloudflare logs the cron event in the dashboard.
+  },
 };

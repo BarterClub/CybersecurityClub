@@ -40,6 +40,29 @@
       "id": "4e2136877ad141eebd0f96a1798b20d3"
     }
   ],
+  // Cron triggers — auto-reset the per-term leaderboard at the start of each
+  // OIT quarter. All times are UTC; OIT runs on Pacific time (PST = UTC-8 in
+  // winter, PDT = UTC-7 in summer), so 07:00 UTC ≈ midnight PDT and 08:00 UTC
+  // ≈ midnight PST. Set to fire just after midnight Pacific on the first day
+  // of each term so the prior term's standings carry through registration.
+  //
+  // 2026-27 OIT calendar (per oit.edu/registrar/calendars):
+  //   Fall   2026: Sep 30 (Wed)
+  //   Winter 2027: Jan  4 (Mon, PST)
+  //   Spring 2027: Mar 29 (Mon, PDT)
+  //   Summer 2027: Jun 21 (Mon, PDT)
+  //
+  // Cron format is `minute hour day-of-month month day-of-week`. Day-of-week
+  // is `*` so the trigger doesn't double-fire on a weekly cadence.
+  // Only the production Worker runs cron — the kiosk shares the same KV.
+  "triggers": {
+    "crons": [
+      "0 7 30 9 *",   // Fall   (Sep 30 00:00 PDT = 07:00 UTC)
+      "0 8 4 1 *",    // Winter (Jan  4 00:00 PST = 08:00 UTC)
+      "0 7 29 3 *",   // Spring (Mar 29 00:00 PDT = 07:00 UTC)
+      "0 7 21 6 *"    // Summer (Jun 21 00:00 PDT = 07:00 UTC)
+    ]
+  },
   "compatibility_flags": [
     "nodejs_compat"
   ]

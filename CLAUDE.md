@@ -189,11 +189,25 @@ Storage is a single Cloudflare Workers KV namespace bound as `STATS`. Three keys
 
 KV is eventually consistent; for club-scale traffic, occasional duplicate / lost writes are acceptable. If precision ever matters, swap to a Durable Object.
 
-**Resetting the per-term leaderboard at the start of each quarter:**
+**Per-term leaderboard reset is automatic** via Cloudflare Cron Triggers (configured in `wrangler.jsonc` → `triggers.crons`). The Worker's `scheduled()` handler deletes `leaderboard:current` at midnight Pacific on the first day of each OIT quarter:
+
+| Term | Date (Pacific) | Cron (UTC) |
+|---|---|---|
+| Fall 2026   | Sep 30 (Wed) 00:00 PDT | `0 7 30 9 *` |
+| Winter 2027 | Jan 4 (Mon) 00:00 PST  | `0 8 4 1 *`  |
+| Spring 2027 | Mar 29 (Mon) 00:00 PDT | `0 7 29 3 *` |
+| Summer 2027 | Jun 21 (Mon) 00:00 PDT | `0 7 21 6 *` |
+
+The all-time board (`leaderboard:alltime`) is never auto-cleared.
+
+If OIT's calendar shifts in future years, edit `wrangler.jsonc` → `triggers.crons` and redeploy. Source of truth: <https://www.oit.edu/registrar/calendars>.
+
+**Manual reset** (e.g., to clear the board outside of a term boundary):
 ```
 npx wrangler kv key delete --namespace-id 4e2136877ad141eebd0f96a1798b20d3 leaderboard:current
 ```
-The all-time board (`leaderboard:alltime`) is never auto-cleared.
+
+Only the production Worker runs the cron — the kiosk Worker (`wrangler-qr.jsonc`) shares the same KV namespace and would double-fire if it also had the trigger.
 
 To rotate the KV namespace:
 ```
