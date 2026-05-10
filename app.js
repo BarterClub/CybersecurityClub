@@ -255,10 +255,14 @@
     }
   }
   function stopTimerOnCompletion() {
-    if (ctfTimer && !ctfTimer.completedAt) {
-      ctfTimer.completedAt = Date.now();
-      saveTimer();
-    }
+    // Create-if-null so pre-existing 10/10 players (whose localStorage
+    // carried completion forward from before the timer feature shipped)
+    // get a non-null ctfTimer they can submit against. Their elapsed time
+    // resolves to 0 — slight unfairness on the leaderboard, but the
+    // alternative is "you can't submit at all", which is worse UX.
+    if (!ctfTimer) ctfTimer = { startedAt: Date.now(), completedAt: Date.now() };
+    else if (!ctfTimer.completedAt) ctfTimer.completedAt = Date.now();
+    saveTimer();
   }
   function elapsedMs() {
     if (!ctfTimer || !ctfTimer.startedAt) return 0;
