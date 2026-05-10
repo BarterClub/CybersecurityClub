@@ -140,12 +140,32 @@ function insertOrUpgrade(list, entry) {
   return list.slice(0, LEADERBOARD_LIMIT);
 }
 
+// Total points for solving every challenge — used to backfill `n` on legacy
+// entries that were stored before the rolling-leaderboard code added the
+// solve-count field. Computed once at module load so adding a challenge
+// to CHALLENGE_POINTS automatically updates this.
+const FULL_POINTS = Object.values(CHALLENGE_POINTS).reduce((a, b) => a + b, 0);
+
+// If an entry is missing `n` (pre-rolling-code data), infer it where we can.
+// Full-completion (p === FULL_POINTS) uniquely implies n === TOTAL_CHALLENGES.
+// For partial entries we can't reliably reverse-engineer n from p (multiple
+// subsets sum to the same total), so we leave it undefined and let the client
+// display "?" rather than misleadingly showing "0/N".
+function normalizeEntry(e) {
+  if (typeof e.n === 'number') return e;
+  if (e.p === FULL_POINTS) return { ...e, n: TOTAL_CHALLENGES };
+  return e;
+}
+
 async function handleLeaderboard(env) {
   const [current, alltime] = await Promise.all([
     readBoard(env, 'leaderboard:current'),
     readBoard(env, 'leaderboard:alltime'),
   ]);
-  return jsonResponse({ current: current.slice(0, 10), alltime: alltime.slice(0, 10) });
+  return jsonResponse({
+    current: current.slice(0, 10).map(normalizeEntry),
+    alltime: alltime.slice(0, 10).map(normalizeEntry),
+  });
 }
 
 async function handleSubmitScore(request, env) {

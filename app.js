@@ -643,7 +643,11 @@ _text
       const isMe = highlightUsername && e.u === highlightUsername;
       const rank = String(i + 1).padStart(2, ' ');
       const name = String(e.u || '').padEnd(20, ' ');
-      const solved = `${e.n || 0}/${total}`.padStart(5, ' ');
+      // Show "?" instead of "0" when the entry predates the n-field. The
+      // worker backfills full-completion entries (p === 1300 → n === 10) but
+      // can't reverse-engineer partial-progress legacy entries.
+      const solveCount = (typeof e.n === 'number') ? e.n : '?';
+      const solved = `${solveCount}/${total}`.padStart(5, ' ');
       const pts  = String(e.p || 0).padStart(4, ' ');
       const time = formatElapsed(e.t || 0);
       const nameClass = isMe ? 'term-out-warn' : 'term-out-info';
