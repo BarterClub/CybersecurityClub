@@ -23,7 +23,7 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "cybersecurityclub-qr",
   "compatibility_date": "2026-05-07",
-  "main": "src/worker.js",
+  "main": "src/server.js",
   "observability": {
     "enabled": true
   },
@@ -37,6 +37,15 @@
       "id": "4e2136877ad141eebd0f96a1798b20d3"
     }
   ],
+  // CF Access env vars — see wrangler.jsonc for documentation. The kiosk
+  // Worker also runs `src/worker.js`, so it includes the admin routes;
+  // they just won't accept requests unless these are set. Normally you'd
+  // configure CF Access only on the production hostname, so the kiosk
+  // admin routes stay 401/503 by design.
+  "vars": {
+    "CF_ACCESS_TEAM_DOMAIN": "",
+    "CF_ACCESS_AUD": ""
+  },
   "compatibility_flags": [
     "nodejs_compat"
   ]
