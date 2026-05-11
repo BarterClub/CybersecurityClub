@@ -37,15 +37,12 @@
       "id": "4e2136877ad141eebd0f96a1798b20d3"
     }
   ],
-  // CF Access env vars — see wrangler.jsonc for documentation. The kiosk
-  // Worker also runs `src/worker.js`, so it includes the admin routes;
-  // they just won't accept requests unless these are set. Normally you'd
-  // configure CF Access only on the production hostname, so the kiosk
-  // admin routes stay 401/503 by design.
-  "vars": {
-    "CF_ACCESS_TEAM_DOMAIN": "",
-    "CF_ACCESS_AUD": ""
-  },
+  // CF Access env vars are set in the Cloudflare dashboard, not here —
+  // see wrangler.jsonc for the explanation. The kiosk Worker also runs
+  // `src/server.js`, so it includes the admin routes; they just won't
+  // accept requests unless the vars are set in this Worker's dashboard
+  // Variables. Normally CF Access is only configured on the production
+  // hostname, so kiosk admin routes stay 401/503 by design.
   "compatibility_flags": [
     "nodejs_compat"
   ]
