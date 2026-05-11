@@ -40,16 +40,29 @@
       "id": "4e2136877ad141eebd0f96a1798b20d3"
     }
   ],
-  // Cloudflare Access env vars for the /admin console are set in the
-  // Cloudflare dashboard, NOT here:
-  //   Workers & Pages → cybersecurityclub → Settings → Variables and Secrets
-  //   - CF_ACCESS_TEAM_DOMAIN  (e.g. "oit-cybersec")
-  //   - CF_ACCESS_AUD          (the Application Audience tag from Zero Trust)
+  // Cloudflare Access env vars for the /admin console.
   //
-  // Do NOT add a `vars` block here — a `vars` block in wrangler.jsonc fully
-  // replaces the dashboard-set values on every deploy. We set them only via
-  // the dashboard so admins can rotate them without committing to git.
+  // These live in source (not dashboard) because Cloudflare's GitHub-integrated
+  // builds clear plaintext dashboard vars on every deploy. Putting them here is
+  // the only reliable way to make them stick.
+  //
+  // Both values are PUBLIC config, not secrets:
+  //   - CF_ACCESS_TEAM_DOMAIN  → already visible in CF Access login URL
+  //   - CF_ACCESS_AUD          → application identifier; signing key (not this) is
+  //                              what actually authenticates. Cloudflare's docs
+  //                              show this value committed in source examples.
+  //
+  // To rotate (e.g. if you recreate the Access app and get a new AUD):
+  //   1. Zero Trust → Access controls → Applications → OIT Cybersec Admin
+  //      → Overview → copy the new AUD
+  //   2. Update the value below + in wrangler-qr.jsonc
+  //   3. Commit + push to main
+  //
   // If either var is missing at runtime the Worker returns 503 — fail closed.
+  "vars": {
+    "CF_ACCESS_TEAM_DOMAIN": "oit-cybersec",
+    "CF_ACCESS_AUD": "758341136afedb8e12acae4afb9244a6f6bd38a251ae1fee60e3ee5c6aa19a09"
+  },
   // Cron triggers — auto-reset the per-term leaderboard at the start of each
   // OIT quarter. All times are UTC; OIT runs on Pacific time (PST = UTC-8 in
   // winter, PDT = UTC-7 in summer), so 07:00 UTC ≈ midnight PDT and 08:00 UTC
