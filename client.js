@@ -503,7 +503,8 @@ _text
     await slow(`<span class="term-out-ok">$</span> Welcome to the ${CONFIG.clubName} Terminal v1.0.0`, '', g);
     await slow(`${CONFIG.campusName} · ${CONFIG.description}`, 'dim', g);
     await slowBlank(g);
-    await slowSolveCount(g);
+    // Solve count omitted here — already shown in the boot animation's [INFO] line.
+    // It's still printed on the CTF tab (printCtf) where the context is relevant.
     await slow('Type <span class="term-out-ok">help</span> for commands. Type <span class="term-out-mag">ctf</span> to start solving challenges.', 'dim', g);
     await slow('New here? Type <span class="term-out-ok">about</span> for how to get started.', 'dim', g);
     // Nudge anyone who's solved anything but hasn't joined the leaderboard.
