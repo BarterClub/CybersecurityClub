@@ -162,9 +162,12 @@ async function handleLeaderboard(env) {
     readBoard(env, 'leaderboard:current'),
     readBoard(env, 'leaderboard:alltime'),
   ]);
+  // Return the full stored board (capped at LEADERBOARD_LIMIT=100) so the
+  // client can find an off-list player and render neighbor rows. ~10 KB
+  // for 100 entries — negligible vs. the cost of a follow-up rank lookup.
   return jsonResponse({
-    current: current.slice(0, 10).map(normalizeEntry),
-    alltime: alltime.slice(0, 10).map(normalizeEntry),
+    current: current.map(normalizeEntry),
+    alltime: alltime.map(normalizeEntry),
   });
 }
 

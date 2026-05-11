@@ -627,10 +627,31 @@ _text
     await slow('Progress is saved in this browser via localStorage — survives reloads, but not incognito or other browsers.', 'dim', g);
   }
 
+  // Render a single leaderboard row inline. Shared between top-10 render and
+  // the "below top 10" neighbor render so formatting stays in lockstep.
+  // - rank is 1-indexed display position.
+  // - highlightUsername (if matched) adds a "← you" suffix and swaps username
+  //   color to warn (orange) so the player can spot themselves.
+  // - Solve count shows "?" instead of "0" for legacy entries missing `n`
+  //   (the worker backfills full-completion entries but can't reverse-engineer
+  //   partial-progress legacy data).
+  async function _renderBoardRow(e, rank, highlightUsername, total, myGen) {
+    const isMe = highlightUsername && e.u === highlightUsername;
+    const rankStr = String(rank).padStart(2, ' ');
+    const name = String(e.u || '').padEnd(20, ' ');
+    const solveCount = (typeof e.n === 'number') ? e.n : '?';
+    const solved = `${solveCount}/${total}`.padStart(5, ' ');
+    const pts  = String(e.p || 0).padStart(4, ' ');
+    const time = formatElapsed(e.t || 0);
+    const nameClass = isMe ? 'term-out-warn' : 'term-out-info';
+    const suffix = isMe ? ' <span class="term-out-warn">← you</span>' : '';
+    await slow(`  <span class="term-out-warn">#${rankStr}</span>  <span class="${nameClass}">${escapeHtml(name)}</span>  <span class="term-out-mag">${solved}</span>  ${pts}pts  <span class="term-out-dim">${time}</span>${suffix}`, '', myGen);
+  }
+
   // Render a single board (current OR all-time) inline via slow().
-  // Columns: rank, username (left-pad), solve count (n/10), points, elapsed time.
-  // If `highlightUsername` matches a row, that row gets a "← you" suffix and
-  // the username color-swaps to warn (orange) so the player can spot themselves.
+  // Shows top 10 always; if the highlighted player is below #10, adds a
+  // separator line ("⋮") and renders the player's row plus one row above
+  // and one below for context — so they see exactly who's nearby.
   async function _slowRenderBoard(title, list, myGen, highlightUsername) {
     await slow(title, 'mag', myGen);
     if (!list || !list.length) {
@@ -638,21 +659,23 @@ _text
       return;
     }
     const total = CHALLENGES.length;
-    for (let i = 0; i < list.length; i++) {
-      const e = list[i];
-      const isMe = highlightUsername && e.u === highlightUsername;
-      const rank = String(i + 1).padStart(2, ' ');
-      const name = String(e.u || '').padEnd(20, ' ');
-      // Show "?" instead of "0" when the entry predates the n-field. The
-      // worker backfills full-completion entries (p === 1300 → n === 10) but
-      // can't reverse-engineer partial-progress legacy entries.
-      const solveCount = (typeof e.n === 'number') ? e.n : '?';
-      const solved = `${solveCount}/${total}`.padStart(5, ' ');
-      const pts  = String(e.p || 0).padStart(4, ' ');
-      const time = formatElapsed(e.t || 0);
-      const nameClass = isMe ? 'term-out-warn' : 'term-out-info';
-      const suffix = isMe ? ' <span class="term-out-warn">← you</span>' : '';
-      await slow(`  <span class="term-out-warn">#${rank}</span>  <span class="${nameClass}">${escapeHtml(name)}</span>  <span class="term-out-mag">${solved}</span>  ${pts}pts  <span class="term-out-dim">${time}</span>${suffix}`, '', myGen);
+    const top10Count = Math.min(10, list.length);
+
+    // Top 10
+    for (let i = 0; i < top10Count; i++) {
+      await _renderBoardRow(list[i], i + 1, highlightUsername, total, myGen);
+    }
+
+    // If the player is below the visible top 10, drop a separator and render
+    // one row above (if not already shown), the player's row, and one below.
+    const myIdx = highlightUsername ? list.findIndex(e => e.u === highlightUsername) : -1;
+    if (myIdx >= 10) {
+      await slow('  <span class="term-out-dim">           ⋮</span>', '', myGen);
+      for (let i = myIdx - 1; i <= myIdx + 1; i++) {
+        if (i >= 10 && i < list.length) {
+          await _renderBoardRow(list[i], i + 1, highlightUsername, total, myGen);
+        }
+      }
     }
   }
 
@@ -674,18 +697,13 @@ _text
       return;
     }
     const me = (ctfTimer && ctfTimer.submittedAs) || null;
+    // Each board's render handles its own "you" highlight + below-top-10
+    // neighbor rows. The standalone "Your standing as of last solve" line
+    // is gone — replaced by the contextual rows, which are strictly more
+    // informative (you see who's near you, not just an abstract number).
     await _slowRenderBoard('── THIS TERM ──', d && d.current, g, me);
     await slowBlank(g);
     await _slowRenderBoard('── ALL TIME ──', d && d.alltime, g, me);
-    // After both boards, surface the player's standing even if their row
-    // is off the visible top 10. lastRank* is cached from the most recent
-    // submit/auto-submit response.
-    if (me && ctfTimer && (ctfTimer.lastRankCurrent || ctfTimer.lastRankAllTime)) {
-      await slowBlank(g);
-      const cur = ctfTimer.lastRankCurrent ? `this term <span class="term-out-warn">#${ctfTimer.lastRankCurrent}</span>` : 'this term —';
-      const all = ctfTimer.lastRankAllTime ? `all-time <span class="term-out-warn">#${ctfTimer.lastRankAllTime}</span>` : 'all-time —';
-      await slow(`<span class="term-out-dim">Your standing as of last solve:</span> ${cur} · ${all}`, '', g);
-    }
   }
 
   async function printPage(name) {
