@@ -1729,6 +1729,22 @@ ${bot}
   /* ============================================================
      BOOT
      ============================================================ */
+  // Return the active announcement (or null) given CONFIG.announcement and today.
+  // Expiry check: announcement disappears after end-of-day on `expires`. Empty/missing
+  // message → null. Severity is normalized so the boot line picks up a known CSS class.
+  function activeAnnouncement() {
+    const a = CONFIG.announcement;
+    if (!a || typeof a !== 'object' || !a.message) return null;
+    if (a.expires) {
+      const exp = new Date(a.expires + 'T23:59:59');
+      if (isNaN(exp) || exp < new Date()) return null;
+    }
+    const sev = a.severity === 'info' ? 'info'
+              : a.severity === 'alert' ? 'danger'
+              : 'warn';
+    return { message: String(a.message), sev };
+  }
+
   function boot() {
     const lines = [
       ['['+new Date().toISOString().slice(11,19)+`] booting ${CONFIG.clubShort} terminal v1.0.0...`, 'dim'],
@@ -1736,12 +1752,18 @@ ${bot}
       ['[ OK ] started network manager', 'ok'],
       ['[ OK ] started session for user hacker', 'ok'],
       ['[ OK ] CTF subsystem ready: '+CHALLENGES.length+' challenges loaded', 'ok'],
+    ];
+    // Inject an admin-edited announcement line if one is active. Severity maps
+    // to the boot-line color (warn/info/danger). Past-expiry → silently skipped.
+    const ann = activeAnnouncement();
+    if (ann) lines.push([`[ANNOUNCE] ${escapeHtml(ann.message)}`, ann.sev]);
+    lines.push(
       // Live counter — fetched from /api/stats at boot. The placeholder span
       // gets its textContent replaced when the fetch resolves; if the API is
       // unreachable, we hide the line entirely so it doesn't sit there as `…`.
       [`[INFO] <span id="boot-solves">…</span> flags captured across all sessions`, 'info'],
       ['', '']
-    ];
+    );
     let i = 0;
     const tick = () => {
       if (i >= lines.length) {
@@ -1870,6 +1892,7 @@ ${bot}
     'clubName', 'campusName', 'founded', 'description',
     'meetingDay', 'meetingTime', 'meetingRoom',
     'members', 'specialEvents', 'officers', 'advisor', 'links',
+    'announcement',
   ];
   function mergeRemoteConfig(remote) {
     if (!remote || typeof remote !== 'object') return;

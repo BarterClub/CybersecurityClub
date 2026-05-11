@@ -227,6 +227,30 @@
     </div>
   </section>
 
+  <!-- ANNOUNCEMENT -->
+  <section class="panel">
+    <h2>announcement</h2>
+    <p class="note">A single banner that shows in the boot terminal: <code>[ANNOUNCE] &lt;message&gt;</code>. Leave message empty for no banner. Auto-hides after the expiry date.</p>
+    <div class="field">
+      <label for="f-announce-message">message</label>
+      <input id="f-announce-message" type="text" maxlength="200" placeholder="CTF practice — Friday 6 PM · Room 259" autocomplete="off">
+    </div>
+    <div class="grid-2" style="margin-top: 10px;">
+      <div class="field">
+        <label for="f-announce-expires">expires (optional — leave blank for no auto-hide)</label>
+        <input id="f-announce-expires" type="date">
+      </div>
+      <div class="field">
+        <label for="f-announce-severity">severity</label>
+        <select id="f-announce-severity">
+          <option value="info">info (blue)</option>
+          <option value="warn">warn (amber)</option>
+          <option value="alert">alert (red)</option>
+        </select>
+      </div>
+    </div>
+  </section>
+
   <!-- OFFICERS -->
   <section class="panel">
     <h2>officers</h2>

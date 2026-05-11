@@ -144,6 +144,11 @@ function populateForm(cfg) {
   const evList = $('events-list');
   evList.innerHTML = '';
   (cfg.specialEvents || []).forEach(e => evList.appendChild(renderEvent(e)));
+
+  const a = cfg.announcement || {};
+  $('f-announce-message').value  = a.message  || '';
+  $('f-announce-expires').value  = a.expires  || '';
+  $('f-announce-severity').value = ['info','warn','alert'].includes(a.severity) ? a.severity : 'warn';
 }
 
 function collectForm() {
@@ -169,6 +174,16 @@ function collectForm() {
     specialEvents.push(entry);
   });
 
+  const announceMessage = $('f-announce-message').value.trim();
+  const announceExpires = $('f-announce-expires').value.trim();
+  const announcement = announceMessage
+    ? {
+        message: announceMessage,
+        severity: $('f-announce-severity').value,
+        ...(announceExpires ? { expires: announceExpires } : {}),
+      }
+    : null;
+
   return {
     clubName:    $('f-clubName').value.trim(),
     campusName:  $('f-campusName').value.trim(),
@@ -189,6 +204,7 @@ function collectForm() {
       discord: $('f-link-discord').value.trim(),
     },
     specialEvents,
+    announcement,
   };
 }
 

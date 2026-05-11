@@ -179,7 +179,7 @@ That's it. It'll appear in `help`, `help projects` shows usage/examples, and tab
 
 A separate page (`admin.html` + `console.js`, same `styles.css`) lets officers edit the site config and moderate the CTF leaderboard without touching code. **Auth is handled at the edge by Cloudflare Access** — the Worker just verifies the JWT that CF injects on every request that makes it through.
 
-**Editable from the admin UI**: club identity (name, campus, founded, description), meetings (day, time, room), members count, officers (add/edit/delete, one marked "main"), advisor, external links (signup, roost, discord), special events (override a weekly meeting on a specific date).
+**Editable from the admin UI**: club identity (name, campus, founded, description), meetings (day, time, room), members count, officers (add/edit/delete, one marked "main"), advisor, external links (signup, roost, discord), special events (override a weekly meeting on a specific date), announcement banner (one-line message that appears in the public site's boot terminal, with optional auto-expiry date and severity color).
 
 **Not editable from the admin UI** (intentionally — infra config, not content):
 - `clubShort` (terminal hostname — changing mid-session would break references in `client.js`)
