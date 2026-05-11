@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>admin/stats // OIT Cybersecurity Club Portland</title>
+<meta name="description" content="Admin stats — CTF metrics, leaderboard distribution, audit activity.">
+<meta name="robots" content="noindex, nofollow">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+
+<style>
+  /* Admin-stats-page layout. Shares palette with the public site (via
+     styles.css :root vars) but uses a single centered column. Most of
+     this duplicates admin.html's inline styles intentionally — keeps
+     each admin page self-contained without a shared admin.css that the
+     public site would also ship. */
+  .admin-wrap {
+    max-width: 960px; margin: 24px auto; padding: 0 16px;
+    display: flex; flex-direction: column; gap: 16px;
+  }
+  .admin-header {
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 8px;
+    border-bottom: 1px solid var(--border); padding-bottom: 12px;
+  }
+  .admin-header h1 {
+    font-size: 16px; color: var(--accent); letter-spacing: .05em;
+  }
+  .admin-header .who { color: var(--text-dim); font-size: 12px; }
+  .admin-header .who b { color: var(--info); font-weight: 500; }
+  .admin-header a.nav {
+    color: var(--text-dim); text-decoration: none; font-size: 12px;
+    border: 1px solid var(--border); padding: 4px 10px;
+  }
+  .admin-header a.nav:hover { color: var(--accent); border-color: var(--accent-dim); }
+  .admin-header .nav-group { display: flex; gap: 6px; flex-wrap: wrap; }
+
+  /* hidden attribute must beat display: flex */
+  [hidden] { display: none !important; }
+
+  .panel {
+    background: var(--bg-1); border: 1px solid var(--border);
+    padding: 14px 16px;
+  }
+  .panel h2 {
+    color: var(--accent); font-size: 13px; font-weight: 500;
+    letter-spacing: .04em; margin-bottom: 12px;
+    border-bottom: 1px dashed var(--border); padding-bottom: 6px;
+  }
+  .panel h2::before { content: '▒ '; color: var(--accent-dim); }
+  .panel .note { color: var(--text-dim); font-size: 11px; margin-bottom: 10px; }
+
+  /* Stat numbers — number + label pairs in a grid. */
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+  }
+  .stat {
+    background: var(--bg-2); border: 1px solid var(--border);
+    padding: 10px 12px;
+  }
+  .stat .stat-label { color: var(--text-dim); font-size: 11px; }
+  .stat .stat-value { color: var(--accent); font-size: 20px; font-weight: 700; margin-top: 4px; }
+  .stat .stat-sub   { color: var(--text-dim); font-size: 11px; margin-top: 2px; }
+
+  /* ASCII bar chart — monospace alignment. */
+  pre.chart {
+    background: var(--bg-2); border: 1px solid var(--border);
+    padding: 12px; margin: 0;
+    color: var(--text); font-size: 12px; line-height: 1.6;
+    overflow-x: auto;
+    white-space: pre;
+  }
+  pre.chart .bar     { color: var(--accent); }
+  pre.chart .empty   { color: var(--border); }
+  pre.chart .label   { color: var(--text-dim); }
+  pre.chart .count   { color: var(--info); }
+
+  /* Top-10 mini table */
+  .top-table {
+    width: 100%; border-collapse: collapse; font-size: 12px;
+  }
+  .top-table th, .top-table td {
+    text-align: left; padding: 5px 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  .top-table th { color: var(--text-dim); font-weight: 500; font-size: 11px; }
+  .top-table td.rank { color: var(--text-dim); width: 32px; }
+  .top-table td.user { color: var(--text); }
+  .top-table td.pts  { color: var(--info); width: 80px; }
+  .top-table td.time { color: var(--text-dim); width: 80px; }
+  .top-table td.solves { color: var(--accent); width: 60px; text-align: right; }
+  .top-table tr:last-child td { border-bottom: none; }
+
+  /* Board switcher */
+  .board-tabs { display: flex; gap: 0; margin-bottom: 10px; }
+  .board-tab {
+    padding: 4px 12px; color: var(--text-dim); font-size: 12px;
+    border: 1px solid var(--border); background: var(--bg-2);
+    cursor: pointer; font: inherit;
+  }
+  .board-tab:not(:last-child) { border-right: none; }
+  .board-tab.active { background: var(--bg-1); color: var(--accent); }
+
+  /* Audit list */
+  .audit-list { font-size: 11px; }
+  .audit-row {
+    display: grid; grid-template-columns: 140px 1fr 1.2fr 1fr;
+    gap: 8px; padding: 4px 6px; border-bottom: 1px solid var(--border);
+  }
+  .audit-row:last-child { border-bottom: none; }
+  .audit-row .ts  { color: var(--text-dim); }
+  .audit-row .who { color: var(--info); }
+  .audit-row .act { color: var(--accent); }
+  .audit-row .det { color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  @media (max-width: 700px) {
+    .audit-row { grid-template-columns: 1fr; gap: 2px; padding: 6px; }
+  }
+
+  .by-user-list {
+    list-style: none; margin: 0; padding: 0;
+    display: flex; flex-direction: column; gap: 4px; font-size: 12px;
+  }
+  .by-user-list li {
+    display: flex; justify-content: space-between;
+    padding: 4px 8px; background: var(--bg-2); border: 1px solid var(--border);
+  }
+  .by-user-list .who { color: var(--info); }
+  .by-user-list .cnt { color: var(--accent); }
+
+  .auth-gate {
+    text-align: center; padding: 60px 20px;
+    border: 1px dashed var(--border); background: var(--bg-1);
+  }
+  .auth-gate h2 { color: var(--accent); margin-bottom: 12px; }
+  .auth-gate p  { color: var(--text-dim); font-size: 12px; margin-bottom: 8px; }
+  .auth-gate a  { color: var(--info); }
+
+  .empty-state {
+    color: var(--text-dim); font-size: 12px;
+    padding: 16px; text-align: center;
+    border: 1px dashed var(--border);
+  }
+</style>
+</head>
+<body>
+
+<div id="auth-gate" class="auth-gate" hidden>
+  <h2 id="auth-title">checking access…</h2>
+  <p id="auth-msg">verifying your Cloudflare Access session</p>
+  <p><a href="/">← back to main site</a></p>
+</div>
+
+<div id="stats" class="admin-wrap" hidden>
+
+  <header class="admin-header">
+    <h1>~/admin/stats</h1>
+    <span class="who">signed in as <b id="who">…</b></span>
+    <div class="nav-group">
+      <a href="/admin" class="nav">← console</a>
+      <a href="/" class="nav">main site</a>
+    </div>
+  </header>
+
+  <!-- OVERVIEW -->
+  <section class="panel">
+    <h2>overview</h2>
+    <div class="stat-grid">
+      <div class="stat">
+        <div class="stat-label">total flag captures</div>
+        <div class="stat-value" id="s-total">…</div>
+        <div class="stat-sub">across all sessions, all time</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">players · this term</div>
+        <div class="stat-value" id="s-current-players">…</div>
+        <div class="stat-sub">submitted at least one flag</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">players · all time</div>
+        <div class="stat-value" id="s-alltime-players">…</div>
+        <div class="stat-sub">permanent record book</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">admin writes · last 7d</div>
+        <div class="stat-value" id="s-audit7">…</div>
+        <div class="stat-sub" id="s-audit-latest">latest: —</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- DISTRIBUTION -->
+  <section class="panel">
+    <h2>solve distribution</h2>
+    <p class="note">Players bucketed by how many challenges they've solved. Bars scale to the largest bucket.</p>
+    <div class="board-tabs">
+      <button class="board-tab active" data-board="current" type="button">current term</button>
+      <button class="board-tab" data-board="alltime" type="button">all time</button>
+    </div>
+    <pre id="distribution-chart" class="chart">loading…</pre>
+  </section>
+
+  <!-- COMPLETION TIMES -->
+  <section class="panel">
+    <h2>completion times</h2>
+    <p class="note">Among players who solved all 10. <code>elapsed</code> is first-solve → last-solve.</p>
+    <div class="stat-grid" id="completion-grid"></div>
+  </section>
+
+  <!-- TOP 10 -->
+  <section class="panel">
+    <h2>top 10</h2>
+    <p class="note">Same board view as the public ranks tab, but visible even when the public board is empty.</p>
+    <div class="board-tabs">
+      <button class="board-tab active" data-board2="current" type="button">current term</button>
+      <button class="board-tab" data-board2="alltime" type="button">all time</button>
+    </div>
+    <table class="top-table">
+      <thead><tr><th>#</th><th>player</th><th>pts</th><th>elapsed</th><th>solves</th></tr></thead>
+      <tbody id="top10-body"></tbody>
+    </table>
+  </section>
+
+  <!-- AUDIT -->
+  <section class="panel">
+    <h2>admin activity (last 7 days)</h2>
+    <p class="note">Aggregated from the audit log. Newest entries first.</p>
+    <ul id="by-user-list" class="by-user-list" style="margin-bottom: 12px;"></ul>
+    <div id="audit-list" class="audit-list"></div>
+  </section>
+
+  <p style="text-align:center; color: var(--text-dim); font-size: 11px; margin: 8px 0 24px;">
+    /admin/stats · <a href="/admin" style="color: var(--text-dim);">back to console</a>
+  </p>
+
+</div>
+
+<script src="stats.js" defer></script>
+</body>
+</html>
