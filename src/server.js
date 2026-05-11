@@ -71,6 +71,7 @@ const DEFAULT_SITE_CONFIG = {
     roost:   'https://theroost.oit.edu/feeds?type=club&type_id=35576&tab=about',
     discord: 'https://discord.gg/bJ2ZjDKhtT',
   },
+  announcement: null,   // { message, severity?: 'info'|'warn'|'alert', expires?: 'YYYY-MM-DD' } or null
 };
 
 // Same FNV-1a as the page (function intentionally identical to client.js's).
@@ -317,6 +318,24 @@ function validateSiteConfig(input) {
     const detail = str(e.detail, 400);
     if (detail) entry.detail = detail;
     out.specialEvents.push(entry);
+  }
+
+  // Optional announcement — a single banner shown in the public boot terminal.
+  // Empty/missing message → null (no banner). Invalid severity falls back to 'warn'.
+  // Invalid/past expiry is dropped on read (the public site re-checks anyway).
+  const ann = input.announcement;
+  if (ann && typeof ann === 'object') {
+    const msg = str(ann.message, 200);
+    if (!msg) {
+      out.announcement = null;
+    } else {
+      const sev = ['info', 'warn', 'alert'].includes(ann.severity) ? ann.severity : 'warn';
+      const expires = (typeof ann.expires === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(ann.expires))
+        ? ann.expires : null;
+      out.announcement = { message: msg, severity: sev, ...(expires ? { expires } : {}) };
+    }
+  } else {
+    out.announcement = null;
   }
 
   return { ok: true, value: out };
