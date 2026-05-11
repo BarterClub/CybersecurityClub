@@ -199,7 +199,7 @@ A separate page (`admin.html` + `console.js`, same `styles.css`) lets officers e
    - Session duration: 24h (or your preference).
 5. After saving, **copy the Application Audience (AUD) tag** from the application's Overview tab. This is the `CF_ACCESS_AUD` env var.
 6. **Add a policy** "Allow officers" → Action: Allow → Include → Emails: list each officer's email (or use an email-domain rule for `@oit.edu`).
-7. **Set the env vars** in the Cloudflare dashboard (Workers & Pages → cybersecurityclub → Settings → Variables → Environment variables) for both `CF_ACCESS_TEAM_DOMAIN` and `CF_ACCESS_AUD`. Alternatively, fill them in inside `wrangler.jsonc` → `vars` and redeploy. (They're not secrets — the AUD is public info.)
+7. **Update the env vars in `wrangler.jsonc` AND `wrangler-qr.jsonc`** → `vars` block. Commit + push to main. (They're not secrets — the AUD is public info; the team domain is visible in every CF Access login redirect. We keep them in source rather than the dashboard because Cloudflare's GitHub-integrated builds wipe plaintext dashboard vars on every deploy.)
 
 Until both vars are set, `/api/admin/*` returns `503 admin auth not configured` and `/admin` shows a "not configured" message. The page itself is also static, so anyone hitting `/admin` directly will get the page HTML — but the admin UI is useless without the API, and CF Access (once configured) intercepts the request at the edge before it even reaches the Worker.
 
