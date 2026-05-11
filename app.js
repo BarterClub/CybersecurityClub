@@ -623,7 +623,7 @@ _text
     await slow('  <span class="term-out-mag">▸</span> sql_injection — read the SQL the <span class="term-out-ok">login</span> command prints, break the WHERE clause', '', g);
     await slow('  <span class="term-out-mag">▸</span> jwt_tamper — issue with <span class="term-out-ok">token</span>, inspect with <span class="term-out-ok">jwt-decode</span>, forge with alg=none, present to <span class="term-out-ok">whoami-jwt</span>', '', g);
     await slowBlank(g);
-    await slow('Type <span class="term-out-ok">hint &lt;n&gt;</span> if stuck. Type <span class="term-out-ok">score</span> for progress. Run <span class="term-out-ok">ctf reset</span> to wipe saved state.', 'dim', g);
+    await slow('Type <span class="term-out-ok">hint &lt;n&gt;</span> if stuck. Type <span class="term-out-ok">score</span> for progress. Run <span class="term-out-ok">ctf retry</span> to try again for a better time (keeps your leaderboard name), or <span class="term-out-ok">ctf reset</span> to wipe everything.', 'dim', g);
     await slow('Progress is saved in this browser via localStorage — survives reloads, but not incognito or other browsers.', 'dim', g);
   }
 
@@ -841,9 +841,9 @@ _text
        CTF COMMANDS
        ============================================================ */
     ctf: { desc:'CTF challenge mode',
-      usage: 'ctf [list|start <n>|reset]',
-      examples: ['ctf list', 'ctf start 3', 'ctf reset'],
-      notes: 'Progress saves to localStorage so it survives reloads.',
+      usage: 'ctf [list|start <n>|retry|reset]',
+      examples: ['ctf list', 'ctf start 3', 'ctf retry', 'ctf reset'],
+      notes: 'Progress saves to localStorage so it survives reloads.\n\n`ctf retry` wipes progress for a fresh attempt but keeps your leaderboard username — your entry only updates if the new run beats your old score.\n`ctf reset` is the nuclear option: wipes everything including your leaderboard registration.',
       run: (a) => {
       const sub = (a[0] || 'list').toLowerCase();
       if (sub === 'list' || sub === 'ls') {
@@ -884,7 +884,30 @@ _text
         out('CTF progress cleared.', 'warn');
         return;
       }
-      out('usage: ctf list  |  ctf start <n>  |  ctf reset', 'err');
+      if (sub === 'retry') {
+        // Retry = wipe progress for a fresh attempt, but KEEP the player's
+        // leaderboard username (and skipped flag) so their entry can be
+        // beaten by the new run. insertOrUpgrade on the server side keeps
+        // the better entry, so a slower retry simply doesn't replace the
+        // old record.
+        ctfState.solved.clear();
+        ctfState.points = 0;
+        ctfState.activeChallenge = null;
+        saveCtfState();
+        updateScoreUI();
+        // Reset the clock without clearing username/skipped/lastRank*.
+        if (ctfTimer) {
+          delete ctfTimer.startedAt;
+          delete ctfTimer.completedAt;
+          saveTimer();
+        }
+        out('Cleared progress for a fresh attempt. Solve again to beat your best time.', 'ok');
+        if (ctfTimer && ctfTimer.submittedAs) {
+          out(`Your leaderboard entry stays as <span class="term-out-info">${escapeHtml(ctfTimer.submittedAs)}</span> — it'll only update if the new run beats your current best.`, 'dim');
+        }
+        return;
+      }
+      out('usage: ctf list  |  ctf start <n>  |  ctf retry  |  ctf reset', 'err');
     }},
 
     flag: { desc:'Submit a CTF flag (the surrounding flag{} is optional)',
