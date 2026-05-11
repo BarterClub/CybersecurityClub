@@ -402,6 +402,97 @@ async function handleAdminLeaderboardReset(request, env, auth) {
 }
 
 // ============================================================================
+// STATS (admin) — computed from existing KV at request time. No new tracking
+// infrastructure: distribution comes from leaderboard entries' `n` field,
+// completion stats from full-board players, audit summary from audit_log.
+// ============================================================================
+
+async function handleAdminStats(env) {
+  const [totalRaw, currentBoard, alltimeBoard, auditRaw] = await Promise.all([
+    env.STATS.get('total_solves'),
+    readBoard(env, 'leaderboard:current'),
+    readBoard(env, 'leaderboard:alltime'),
+    env.STATS.get('audit_log'),
+  ]);
+
+  const totalSolves = parseInt(totalRaw, 10) || 0;
+
+  // Distribution: bucket players by number of challenges solved (0..TOTAL).
+  // Entries missing `n` get bucketed as 0 unless they're a full completion
+  // (point total == FULL_POINTS), which we can confidently call 10.
+  const distribute = (board) => {
+    const dist = new Array(TOTAL_CHALLENGES + 1).fill(0);
+    for (const e of board) {
+      let n;
+      if (typeof e.n === 'number') n = e.n;
+      else if (e.p === FULL_POINTS) n = TOTAL_CHALLENGES;
+      else n = 0;
+      n = Math.min(TOTAL_CHALLENGES, Math.max(0, Math.floor(n)));
+      dist[n]++;
+    }
+    return dist;
+  };
+
+  // Completion stats over players who solved everything. Times come from `t`
+  // (elapsed ms from first solve → last solve).
+  const completionStats = (board) => {
+    const times = board
+      .filter(e => e.p === FULL_POINTS || e.n === TOTAL_CHALLENGES)
+      .map(e => e.t)
+      .filter(t => typeof t === 'number' && isFinite(t) && t > 0)
+      .sort((a, b) => a - b);
+    if (!times.length) return null;
+    return {
+      count: times.length,
+      fastest: times[0],
+      median: times[Math.floor(times.length / 2)],
+      slowest: times[times.length - 1],
+    };
+  };
+
+  // Audit summary: last 7 days. Group counts by user; keep the latest 20 raw
+  // entries too so the page can show a short recent-activity list.
+  let auditLog = [];
+  try { if (auditRaw) { const parsed = JSON.parse(auditRaw); if (Array.isArray(parsed)) auditLog = parsed; } }
+  catch (_) {}
+  const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const recent = auditLog.filter(e => typeof e.ts === 'number' && e.ts >= sevenDaysAgo);
+  const byUser = {};
+  for (const e of recent) {
+    const u = e.email || '?';
+    byUser[u] = (byUser[u] || 0) + 1;
+  }
+  const latestAudit = auditLog.length ? auditLog[auditLog.length - 1] : null;
+
+  return jsonResponse({
+    totalSolves,
+    challengeCount: TOTAL_CHALLENGES,
+    players: {
+      current: currentBoard.length,
+      alltime: alltimeBoard.length,
+    },
+    distribution: {
+      current: distribute(currentBoard),
+      alltime: distribute(alltimeBoard),
+    },
+    completion: {
+      current: completionStats(currentBoard),
+      alltime: completionStats(alltimeBoard),
+    },
+    top10: {
+      current: currentBoard.slice(0, 10).map(normalizeEntry),
+      alltime: alltimeBoard.slice(0, 10).map(normalizeEntry),
+    },
+    audit: {
+      last7Days: recent.length,
+      byUser,
+      latest: latestAudit,
+      recentEntries: recent.slice().reverse().slice(0, 20),
+    },
+  });
+}
+
+// ============================================================================
 // AUDIT LOG
 // ============================================================================
 
@@ -567,6 +658,7 @@ export default {
       if (p === '/api/admin/leaderboard/delete')     return handleAdminLeaderboardDelete(request, env, auth);
       if (p === '/api/admin/leaderboard/reset')      return handleAdminLeaderboardReset(request, env, auth);
       if (p === '/api/admin/audit')                  return handleAdminAudit(env);
+      if (p === '/api/admin/stats')                  return handleAdminStats(env);
       return jsonResponse({ error: 'unknown admin route' }, 404);
     }
 
