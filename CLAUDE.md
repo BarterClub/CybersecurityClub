@@ -9,7 +9,8 @@ A static HTML/CSS/JS website for the OIT Cybersecurity Club Portland (Oregon Tec
 
 ## Architecture
 
-- **Three-file site**: `index.html` (HTML body + small `<script>` with `CONFIG` at the top), `styles.css` (all CSS), `app.js` (all client-side JS — terminal engine, COMMANDS, CTF, page printers, applyConfig, boot). Was originally one file; split when it grew past ~2200 lines for editor ergonomics and PR diff readability. The CONFIG block stays inlined at the top of `index.html` so club admins can find it without reading three files.
+- **Three-file public site + two-file admin console**: `index.html` (HTML body + small `<script>` with `CONFIG` at the top), `styles.css` (all CSS, shared by both pages), `client.js` (all client-side JS — terminal engine, COMMANDS, CTF, page printers, applyConfig, boot). `admin.html` + `console.js` make up the admin console at `/admin`. The Cloudflare Worker entry is `src/server.js`. The public site was originally one file; split when it grew past ~2200 lines for editor ergonomics and PR diff readability. The inline `CONFIG` in `index.html` now acts as the *fallback* — admin-edited values come from KV via `/api/config` and merge over the defaults at boot.
+- **Note on filenames**: this project was originally `client.js` / `console.js` / `src/server.js`. Those names were quarantined by an aggressive AV (BitDefender) and are kept out of the project to avoid re-triggering. The contents are unchanged from the original Cloudflare Workers / vanilla-JS conventions.
 - **No build step**: Pure static HTML. Open directly in a browser, or serve with any static server.
 - **One runtime dependency**: [Pyodide](https://pyodide.org) (loaded lazily from jsDelivr CDN when the `python` command is first used; ~10 MB).
 - **Embedded image assets**: Two images are base64-embedded in `index.html` rather than served as separate files (keeps the deploy bundle small and lets the page render before any image fetches):
@@ -35,8 +36,10 @@ python3 -m http.server 8000
 
 ### Configuration block
 - A `CONFIG` object near the top of the first `<script>` block holds all club-specific values: name, officers, advisor, meeting day/time/room, external links, member count.
-- `applyConfig()` runs at boot and syncs DOM elements to those values, so editing `CONFIG` and reloading is enough for routine updates.
+- **At boot**, `client.js` fires a `fetch('/api/config')` against the Worker. If KV has an admin-edited config, it's merged over the inline `CONFIG` (only the editable keys — `clubShort`, `qrTargetUrl`, etc. stay frozen). If the API is unreachable (local `python -m http.server` preview) or KV is empty, the inline defaults are used as-is. Boot is briefly blocked (up to 500ms) on the fetch so the home-page terminal printout reflects the merged values from the start.
+- `applyConfig()` runs at boot to sync DOM elements to whatever's in `CONFIG`, and re-runs after the remote fetch resolves. Routine "rotate the room number" edits should go through the admin console; the inline `CONFIG` is the *fallback*, not the canonical source.
 - The "officers onboarded" count in Recent Activity reads from `CONFIG.officers.length` automatically — add or remove officer entries and the count adjusts. The advisor (`CONFIG.advisor`) is rendered separately on the contact page and isn't counted as an officer.
+- **DEFAULT_SITE_CONFIG in `src/server.js`** duplicates the inline `CONFIG` shape, used as the seed when the admin loads the editor before any save has happened. Keep them in sync if you add fields (same pattern as `KNOWN_HASHES` / `CHALLENGE_POINTS` duplication for the CTF).
 
 ### Layout
 - **Top bar**: Owl logo + brand text on the left; tab nav (`home / about / events / contact / ctf`); CTF score badge + "Join us" button on the right.
@@ -172,15 +175,74 @@ That's it. It'll appear in `help`, `help projects` shows usage/examples, and tab
 - `.assetsignore` excludes `CLAUDE.md`, `README.md`, `wrangler.jsonc`, `src/`, and `docs/` from the public asset bundle. Dotfiles (`.git/`, `.claude/`, `.gitignore`) are auto-excluded by Cloudflare.
 - `wrangler.jsonc` defaults match what `cloudflare-workers-and-pages[bot]` would auto-generate — keeps the bot from re-proposing the same config later.
 
-### Worker (`src/worker.js`) + KV
+### Admin console (`/admin`)
 
-The deploy is no longer pure-static. `src/worker.js` is a small Cloudflare Worker that handles four API routes and falls through to static assets for everything else:
+A separate page (`admin.html` + `console.js`, same `styles.css`) lets officers edit the site config and moderate the CTF leaderboard without touching code. **Auth is handled at the edge by Cloudflare Access** — the Worker just verifies the JWT that CF injects on every request that makes it through.
+
+**Editable from the admin UI**: club identity (name, campus, founded, description), meetings (day, time, room), members count, officers (add/edit/delete, one marked "main"), advisor, external links (signup, roost, discord), special events (override a weekly meeting on a specific date).
+
+**Not editable from the admin UI** (intentionally — infra config, not content):
+- `clubShort` (terminal hostname — changing mid-session would break references in `client.js`)
+- `qrTargetUrl` / `qrShowHostnamePrefix` (deploy-time config)
+- `og:*` / `twitter:*` meta tags (social previewers don't run JS, so JS-applied values are invisible; update `index.html` directly)
+
+**Leaderboard moderation**: delete individual entries by username from the current or all-time board, or wipe an entire board (confirmation prompt + double-confirm for all-time). All admin writes append to an audit log shown on the same page.
+
+#### Cloudflare Access setup (one-time, before `/admin` works)
+
+1. **Zero Trust dashboard** → enable the Free plan if you haven't (50 users free, no card required).
+2. **Settings → Authentication → Login methods** → add Microsoft (Entra ID) as an identity provider — or use the built-in "One-time PIN" method, which emails a 6-digit code and works with any email, no IdP config. Either is fine for a club of a few admins.
+3. **Settings → General** → note your *Team domain* (e.g. `oit-cybersec` if the full team URL is `oit-cybersec.cloudflareaccess.com`). This is the `CF_ACCESS_TEAM_DOMAIN` env var.
+4. **Access → Applications → Add an application → Self-hosted**:
+   - Application domain: `cybersecurityclub.scott-reinholtz.workers.dev` (or your custom domain)
+   - Paths: `/admin*` AND `/api/admin/*` (add both as separate paths in the same app — they must share an Audience tag).
+   - Session duration: 24h (or your preference).
+5. After saving, **copy the Application Audience (AUD) tag** from the application's Overview tab. This is the `CF_ACCESS_AUD` env var.
+6. **Add a policy** "Allow officers" → Action: Allow → Include → Emails: list each officer's email (or use an email-domain rule for `@oit.edu`).
+7. **Set the env vars** in the Cloudflare dashboard (Workers & Pages → cybersecurityclub → Settings → Variables → Environment variables) for both `CF_ACCESS_TEAM_DOMAIN` and `CF_ACCESS_AUD`. Alternatively, fill them in inside `wrangler.jsonc` → `vars` and redeploy. (They're not secrets — the AUD is public info.)
+
+Until both vars are set, `/api/admin/*` returns `503 admin auth not configured` and `/admin` shows a "not configured" message. The page itself is also static, so anyone hitting `/admin` directly will get the page HTML — but the admin UI is useless without the API, and CF Access (once configured) intercepts the request at the edge before it even reaches the Worker.
+
+#### How auth verification works server-side
+
+`src/server.js` → `requireAdmin()` reads the `Cf-Access-Jwt-Assertion` header (CF injects on protected paths), falls back to the `CF_Authorization` cookie. It verifies the RS256 signature against CF's JWKS at `https://<team>.cloudflareaccess.com/cdn-cgi/access/certs` (cached in memory for 1 hour). Required claims: `iss = https://<team>.cloudflareaccess.com`, `aud` contains `CF_ACCESS_AUD`, `exp` not expired. The `email` claim is exposed to handlers as `auth.email` for audit logging.
+
+This double-check matters because someone could otherwise hit the `*.workers.dev` URL directly and bypass Access. Verifying the JWT inside the Worker makes that attack impossible.
+
+#### Admin API routes
+
+| Method + Path | Purpose |
+|---|---|
+| `GET /api/config` | Public — current effective site config (KV override or defaults). Called by `client.js` at boot. |
+| `GET /api/admin/me` | Returns `{ email }` for the authenticated user. |
+| `POST /api/admin/config` | Validates and replaces the entire site config in KV (`site_config` key). |
+| `POST /api/admin/leaderboard/delete` `{ username, board }` | Removes a username from `current`, `alltime`, or `both`. |
+| `POST /api/admin/leaderboard/reset` `{ board }` | Deletes a board entirely. |
+| `GET /api/admin/audit` | Returns the last 200 admin write events, newest first. |
+
+#### KV keys
+
+- `site_config` — JSON, the admin-edited site config. Read by `/api/config`; written by `/api/admin/config`.
+- `audit_log` — JSON array, capped at 200 entries. Appended to on every admin write.
+
+#### Adding a new editable field
+
+1. Add it to the inline `CONFIG` in `index.html` (sets the fallback value + serves as docs).
+2. Mirror it in `DEFAULT_SITE_CONFIG` in `src/server.js`.
+3. Add validation for it in `validateSiteConfig()` in `src/server.js`.
+4. Add it to `EDITABLE_KEYS` in `client.js` so the remote-config merger picks it up.
+5. Add a form input in `admin.html` and wire it in `populateForm()` / `collectForm()` in `console.js`.
+6. Reference it from `applyConfig()` in `client.js` so the change actually shows up on the live page.
+
+### Worker (`src/server.js`) + KV
+
+The deploy is no longer pure-static. `src/server.js` is a small Cloudflare Worker that handles four API routes and falls through to static assets for everything else:
 - `GET  /api/stats`        → `{ total: <int> }` — current global flag-capture counter
 - `POST /api/solve`        → `{ flag: string }` → re-hashes (FNV-1a) the submitted flag, verifies against the known-good hash list, increments and returns the counter when valid
 - `GET  /api/leaderboard`  → `{ current: [...], alltime: [...] }` — top 10 of each board
 - `POST /api/submit-score` → `{ username, solvedIds, elapsedMs }` → validates username, computes points server-side from `solvedIds`, upserts into both boards (better entry per username wins)
 
-Server-side re-hashing is the security boundary: a curl spammer can't inflate the counter without actually knowing a real flag. The hash list duplicates the values in `CHALLENGES` (in `app.js`) intentionally — keep them in sync when adding/rotating challenges. The leaderboard's per-challenge points table (`CHALLENGE_POINTS`) is similarly duplicated and used to compute the score server-side rather than trusting client-sent totals.
+Server-side re-hashing is the security boundary: a curl spammer can't inflate the counter without actually knowing a real flag. The hash list duplicates the values in `CHALLENGES` (in `client.js`) intentionally — keep them in sync when adding/rotating challenges. The leaderboard's per-challenge points table (`CHALLENGE_POINTS`) is similarly duplicated and used to compute the score server-side rather than trusting client-sent totals.
 
 Storage is a single Cloudflare Workers KV namespace bound as `STATS`. Three keys live there:
 - `total_solves`         (string-encoded int) — global flag-capture counter
@@ -215,9 +277,9 @@ npx wrangler kv namespace create STATS
 ```
 Paste the printed `id` into BOTH `wrangler.jsonc` AND `wrangler-qr.jsonc` → `kv_namespaces[0].id`. Both deploys must point at the same namespace so the kiosk QR display and the production site agree on the count.
 
-**Both Workers run the same `src/worker.js`** and bind to the same `STATS` namespace. KV is account-scoped, so two Workers binding to the same id is fine and intentional — it's how the kiosk gets a live count from the same backing store the production site writes to.
+**Both Workers run the same `src/server.js`** and bind to the same `STATS` namespace. KV is account-scoped, so two Workers binding to the same id is fine and intentional — it's how the kiosk gets a live count from the same backing store the production site writes to.
 
-`app.js` calls `/api/stats` at boot and shows the count under the `[ OK ] CTF subsystem ready` line in the boot animation. It also surfaces the count on the home + CTF tabs (via `slowSolveCount()`) and in the QR widget (`#qr-solves`). A 1-hour `setInterval` re-polls `/api/stats` so kiosk displays stay current without a full page reload. The flag command POSTs to `/api/solve` after a successful local solve so the global counter increments.
+`client.js` calls `/api/stats` at boot and shows the count under the `[ OK ] CTF subsystem ready` line in the boot animation. It also surfaces the count on the home + CTF tabs (via `slowSolveCount()`) and in the QR widget (`#qr-solves`). A 1-hour `setInterval` re-polls `/api/stats` so kiosk displays stay current without a full page reload. The flag command POSTs to `/api/solve` after a successful local solve so the global counter increments.
 
 The leaderboard timer (`oit-cybersec-timer-v1` in localStorage) starts on the first `ctf start <n>` call (or the first flag submission, whichever comes first) and locks `completedAt` on the 10th successful flag.
 
@@ -253,7 +315,7 @@ Invoke from a Claude Code session as the `site-tester` subagent; reports a pass/
 
 - **Removing the scanline overlay**: Edit `body::before` in CSS. Quick win if it's too intense for an audience.
 - **Switching color schemes**: Change `--accent` and `--accent-dim` at `:root`. Try amber `#ffb454`, cyan `#5fd7ff`, or magenta `#d484ff`. Update the topbar logo + favicon if rebranding away from Oregon Tech.
-- **Adding a backend** (beyond the existing tiny `src/worker.js`): Worth doing only if you need persistent per-user state (real leaderboards across browsers, accounts, real shells). The current Worker handles only an anonymous global counter. For more, lean toward CTFd self-hosted rather than building from scratch.
+- **Adding a backend** (beyond the existing tiny `src/server.js`): Worth doing only if you need persistent per-user state (real leaderboards across browsers, accounts, real shells). The current Worker handles only an anonymous global counter. For more, lean toward CTFd self-hosted rather than building from scratch.
 - **Updating Pyodide**: Test `python` and the CTF challenges that rely on it (#3, #4, #6) before merging.
 
 ## Credits

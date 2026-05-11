@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>admin // OIT Cybersecurity Club Portland</title>
+<meta name="description" content="Admin console — edit site content and moderate the CTF leaderboard.">
+<meta name="robots" content="noindex, nofollow">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+
+<style>
+  /* Admin-page-only layout. Shares the color palette and terminal feel
+     of the public site (styles.css → :root vars) but uses a single
+     centered column instead of the 3-column terminal grid. */
+  .admin-wrap {
+    max-width: 960px; margin: 24px auto; padding: 0 16px;
+    display: flex; flex-direction: column; gap: 16px;
+  }
+  /* hidden attribute must beat display: flex / display: grid */
+  [hidden] { display: none !important; }
+  .admin-header {
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 8px;
+    border-bottom: 1px solid var(--border); padding-bottom: 12px;
+  }
+  .admin-header h1 {
+    font-size: 16px; color: var(--accent); letter-spacing: .05em;
+  }
+  .admin-header .who { color: var(--text-dim); font-size: 12px; }
+  .admin-header .who b { color: var(--info); font-weight: 500; }
+  .admin-header a.back {
+    color: var(--text-dim); text-decoration: none; font-size: 12px;
+    border: 1px solid var(--border); padding: 4px 10px;
+  }
+  .admin-header a.back:hover { color: var(--accent); border-color: var(--accent-dim); }
+
+  .panel {
+    background: var(--bg-1); border: 1px solid var(--border);
+    padding: 14px 16px;
+  }
+  .panel h2 {
+    color: var(--accent); font-size: 13px; font-weight: 500;
+    letter-spacing: .04em; margin-bottom: 12px;
+    border-bottom: 1px dashed var(--border); padding-bottom: 6px;
+  }
+  .panel h2::before { content: '▒ '; color: var(--accent-dim); }
+  .panel .note { color: var(--text-dim); font-size: 11px; margin-bottom: 10px; }
+
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 700px) { .grid-2 { grid-template-columns: 1fr; } }
+
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field label { color: var(--text-dim); font-size: 11px; }
+  .field input, .field textarea, .field select {
+    background: var(--bg-0); color: var(--text);
+    border: 1px solid var(--border); padding: 6px 8px;
+    font: inherit; font-size: 12px;
+  }
+  .field input:focus, .field textarea:focus, .field select:focus {
+    outline: none; border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-dim);
+  }
+  .field textarea { resize: vertical; min-height: 60px; }
+
+  /* Rows table (officers / events / leaderboard) */
+  .row-table { display: flex; flex-direction: column; gap: 6px; }
+  .row {
+    display: grid; gap: 6px; align-items: center;
+    border: 1px solid var(--border); background: var(--bg-2);
+    padding: 8px;
+  }
+  .row-officer  { grid-template-columns: 1fr 1fr 1.5fr auto auto; }
+  .row-event    { grid-template-columns: 130px 1fr 1.5fr auto; }
+  .row-lb       { grid-template-columns: 1fr 80px 100px 80px auto; }
+  @media (max-width: 700px) {
+    .row-officer, .row-event, .row-lb { grid-template-columns: 1fr; }
+  }
+  .row input { font-size: 12px; padding: 4px 6px; }
+  .row-actions { display: flex; gap: 4px; justify-content: flex-end; }
+  .row .main-tag {
+    color: var(--accent); font-size: 11px; padding: 0 6px;
+    border: 1px solid var(--accent-dim);
+    display: inline-flex; align-items: center; cursor: pointer;
+    background: transparent;
+  }
+  .row .main-tag.on { background: var(--accent); color: var(--bg-0); }
+  .row .lb-rank { color: var(--text-dim); font-size: 11px; text-align: center; }
+  .row .lb-points { color: var(--info); font-size: 12px; }
+  .row .lb-time { color: var(--text-dim); font-size: 12px; }
+  .row .lb-solves { color: var(--accent); font-size: 11px; text-align: center; }
+
+  /* Buttons */
+  button.btn, a.btn {
+    background: var(--bg-2); color: var(--text);
+    border: 1px solid var(--border); padding: 6px 12px;
+    font: inherit; font-size: 12px; cursor: pointer;
+    text-decoration: none; display: inline-flex; align-items: center; gap: 6px;
+  }
+  button.btn:hover, a.btn:hover { border-color: var(--accent-dim); color: var(--accent); }
+  button.btn-primary {
+    background: var(--accent); color: var(--bg-0); border-color: var(--accent);
+    font-weight: 700;
+  }
+  button.btn-primary:hover { background: var(--warn); border-color: var(--warn); color: var(--bg-0); }
+  button.btn-danger {
+    color: var(--danger); border-color: rgba(255,94,94,.4);
+  }
+  button.btn-danger:hover { background: var(--danger); color: var(--bg-0); border-color: var(--danger); }
+  button.btn-small { padding: 3px 8px; font-size: 11px; }
+  button[disabled], button.btn[disabled] { opacity: .5; cursor: not-allowed; }
+
+  .footer-actions {
+    position: sticky; bottom: 0; background: var(--bg-1);
+    border: 1px solid var(--border); padding: 12px 16px;
+    display: flex; gap: 10px; align-items: center; justify-content: space-between;
+    flex-wrap: wrap;
+  }
+  .footer-actions .status { color: var(--text-dim); font-size: 11px; flex: 1 1 auto; }
+  .footer-actions .status.ok  { color: var(--accent); }
+  .footer-actions .status.err { color: var(--danger); }
+
+  .auth-gate {
+    text-align: center; padding: 60px 20px;
+    border: 1px dashed var(--border); background: var(--bg-1);
+  }
+  .auth-gate h2 { color: var(--accent); margin-bottom: 12px; }
+  .auth-gate p  { color: var(--text-dim); font-size: 12px; margin-bottom: 8px; }
+  .auth-gate a  { color: var(--info); }
+
+  .lb-tabs { display: flex; gap: 0; margin-bottom: 8px; }
+  .lb-tab {
+    padding: 4px 12px; color: var(--text-dim); font-size: 12px;
+    border: 1px solid var(--border); background: var(--bg-2);
+    cursor: pointer; font: inherit;
+  }
+  .lb-tab:not(:last-child) { border-right: none; }
+  .lb-tab.active { background: var(--bg-1); color: var(--accent); }
+
+  /* Audit log */
+  .audit { font-size: 11px; max-height: 240px; overflow-y: auto; }
+  .audit-row {
+    display: grid; grid-template-columns: 140px 1fr 1.2fr 1fr;
+    gap: 8px; padding: 4px 6px; border-bottom: 1px solid var(--border);
+  }
+  .audit-row:last-child { border-bottom: none; }
+  .audit-row .ts    { color: var(--text-dim); }
+  .audit-row .who   { color: var(--info); }
+  .audit-row .act   { color: var(--accent); }
+  .audit-row .det   { color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  @media (max-width: 700px) {
+    .audit-row { grid-template-columns: 1fr; gap: 2px; padding: 6px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Auth gate: shown while we check /api/admin/me. If we get a 401,
+     we tell the user to log in via Cloudflare Access (the page itself
+     is also behind Access at the edge, so a 401 here usually means
+     Access isn't configured yet or the policy didn't match). -->
+<div id="auth-gate" class="auth-gate" hidden>
+  <h2 id="auth-title">checking access…</h2>
+  <p id="auth-msg">verifying your Cloudflare Access session</p>
+  <p><a href="/">← back to main site</a></p>
+</div>
+
+<div id="admin" class="admin-wrap" hidden>
+
+  <header class="admin-header">
+    <h1>~/admin/console</h1>
+    <span class="who">signed in as <b id="who">…</b></span>
+    <a href="/" class="back">← back to site</a>
+  </header>
+
+  <!-- IDENTITY -->
+  <section class="panel">
+    <h2>identity</h2>
+    <p class="note">Brand and description shown across the site. Edit `og:*` tags in <code>index.html</code> separately — social previewers don't run JS.</p>
+    <div class="grid-2">
+      <div class="field">
+        <label for="f-clubName">club name</label>
+        <input id="f-clubName" type="text" maxlength="200" autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="f-campusName">campus</label>
+        <input id="f-campusName" type="text" maxlength="200" autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="f-founded">founded (year)</label>
+        <input id="f-founded" type="number" min="1900" max="2100">
+      </div>
+      <div class="field">
+        <label for="f-members">members (count)</label>
+        <input id="f-members" type="number" min="0" max="100000">
+      </div>
+    </div>
+    <div class="field" style="margin-top: 10px;">
+      <label for="f-description">description</label>
+      <textarea id="f-description" maxlength="1000"></textarea>
+    </div>
+  </section>
+
+  <!-- MEETINGS -->
+  <section class="panel">
+    <h2>meetings</h2>
+    <p class="note">Weekly meeting time and room. Special date overrides go in the Events panel below.</p>
+    <div class="grid-2">
+      <div class="field">
+        <label for="f-meetingDay">day</label>
+        <select id="f-meetingDay">
+          <option>Monday</option><option>Tuesday</option><option>Wednesday</option>
+          <option>Thursday</option><option>Friday</option><option>Saturday</option>
+          <option>Sunday</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="f-meetingTime">time</label>
+        <input id="f-meetingTime" type="text" maxlength="40" placeholder="4:00 PM">
+      </div>
+      <div class="field">
+        <label for="f-meetingRoom">room</label>
+        <input id="f-meetingRoom" type="text" maxlength="80" placeholder="Room 259">
+      </div>
+    </div>
+  </section>
+
+  <!-- OFFICERS -->
+  <section class="panel">
+    <h2>officers</h2>
+    <p class="note">The role marked <span style="color:var(--accent)">★</span> shows in the topbar / quick contacts. Only one main at a time.</p>
+    <div id="officers-list" class="row-table"></div>
+    <button class="btn btn-small" id="add-officer" type="button" style="margin-top: 8px;">+ add officer</button>
+  </section>
+
+  <!-- ADVISOR -->
+  <section class="panel">
+    <h2>advisor</h2>
+    <p class="note">Faculty advisor — rendered separately from the officer list.</p>
+    <div class="grid-2">
+      <div class="field">
+        <label for="f-advisor-name">name</label>
+        <input id="f-advisor-name" type="text" maxlength="120">
+      </div>
+      <div class="field">
+        <label for="f-advisor-email">email</label>
+        <input id="f-advisor-email" type="email" maxlength="200">
+      </div>
+    </div>
+  </section>
+
+  <!-- LINKS -->
+  <section class="panel">
+    <h2>external links</h2>
+    <div class="grid-2">
+      <div class="field">
+        <label for="f-link-signup">signup URL (The Roost)</label>
+        <input id="f-link-signup" type="url" maxlength="500">
+      </div>
+      <div class="field">
+        <label for="f-link-roost">roost (club page)</label>
+        <input id="f-link-roost" type="url" maxlength="500">
+      </div>
+      <div class="field" style="grid-column: 1 / -1;">
+        <label for="f-link-discord">discord invite</label>
+        <input id="f-link-discord" type="url" maxlength="500">
+      </div>
+    </div>
+  </section>
+
+  <!-- SPECIAL EVENTS -->
+  <section class="panel">
+    <h2>special events</h2>
+    <p class="note">Overrides a weekly meeting on a specific date (e.g. CTF night, guest speaker). Past dates auto-hide on the public events page. <code>detail</code> is optional — falls back to standard time + room.</p>
+    <div id="events-list" class="row-table"></div>
+    <button class="btn btn-small" id="add-event" type="button" style="margin-top: 8px;">+ add event</button>
+  </section>
+
+  <!-- FOOTER: SAVE -->
+  <div class="footer-actions">
+    <span id="save-status" class="status">loaded.</span>
+    <button class="btn" id="reload" type="button">reload from server</button>
+    <button class="btn btn-primary" id="save" type="button">save changes</button>
+  </div>
+
+  <!-- LEADERBOARD MODERATION -->
+  <section class="panel">
+    <h2>leaderboard moderation</h2>
+    <p class="note">Remove individual entries by username, or wipe an entire board. <strong>Reset is permanent</strong> — the all-time board is normally never auto-reset.</p>
+    <div class="lb-tabs">
+      <button class="lb-tab active" data-board="current" type="button">current term</button>
+      <button class="lb-tab" data-board="alltime" type="button">all time</button>
+    </div>
+    <div id="lb-list" class="row-table"></div>
+    <div style="display: flex; gap: 8px; margin-top: 10px; justify-content: flex-end;">
+      <button class="btn" id="lb-refresh" type="button">refresh</button>
+      <button class="btn btn-danger" id="lb-reset" type="button">reset this board</button>
+    </div>
+  </section>
+
+  <!-- AUDIT LOG -->
+  <section class="panel">
+    <h2>audit log</h2>
+    <p class="note">Last 200 admin writes — config saves and leaderboard moderation actions. Newest first.</p>
+    <div id="audit" class="audit"></div>
+  </section>
+
+  <p style="text-align:center; color: var(--text-dim); font-size: 11px; margin: 8px 0 24px;">
+    /admin · <a href="/" style="color: var(--text-dim);">return to site</a>
+  </p>
+
+</div>
+
+<script src="console.js" defer></script>
+</body>
+</html>

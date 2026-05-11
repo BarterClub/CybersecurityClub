@@ -26,7 +26,7 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "cybersecurityclub",
   "compatibility_date": "2026-05-07",
-  "main": "src/worker.js",
+  "main": "src/server.js",
   "observability": {
     "enabled": true
   },
@@ -40,6 +40,28 @@
       "id": "4e2136877ad141eebd0f96a1798b20d3"
     }
   ],
+  // Cloudflare Access env vars for the /admin console.
+  //
+  //   CF_ACCESS_TEAM_DOMAIN  Just the subdomain part of your Zero Trust team
+  //                          domain, e.g. "oit-cybersec" if your team URL is
+  //                          oit-cybersec.cloudflareaccess.com. Find it at
+  //                          Zero Trust dashboard → Settings → General.
+  //   CF_ACCESS_AUD          The Application Audience tag, a long hex string.
+  //                          Found in Zero Trust → Access → Applications →
+  //                          [your /admin app] → Overview → Application
+  //                          Audience (AUD) Tag.
+  //
+  // Both must be set for /api/admin/* and /admin* requests to be accepted.
+  // If either is empty (or unset), the Worker returns 503 — fail closed.
+  //
+  // These are NOT secrets — the AUD tag and team domain are public info. You
+  // can leave the empty defaults below and override them in the Cloudflare
+  // dashboard (Workers & Pages → Settings → Variables), or replace them here
+  // and redeploy.
+  "vars": {
+    "CF_ACCESS_TEAM_DOMAIN": "",
+    "CF_ACCESS_AUD": ""
+  },
   // Cron triggers — auto-reset the per-term leaderboard at the start of each
   // OIT quarter. All times are UTC; OIT runs on Pacific time (PST = UTC-8 in
   // winter, PDT = UTC-7 in summer), so 07:00 UTC ≈ midnight PDT and 08:00 UTC

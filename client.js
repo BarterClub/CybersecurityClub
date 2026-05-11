@@ -1,6 +1,6 @@
-// OIT Cybersecurity Club Portland — main client-side script.
+﻿// OIT Cybersecurity Club Portland — main client-side script.
 //
-// Loaded from index.html via <script src="app.js" defer>. The deferred
+// Loaded from index.html via <script src="client.js" defer>. The deferred
 // attribute keeps load order sane: the small inline CONFIG <script> at
 // the top of <head> runs synchronously during parse, this file runs
 // after parse is complete (before DOMContentLoaded), so all globals
@@ -1761,8 +1761,9 @@ ${bot}
     tick();
   }
 
-  // Populate dynamic Club Info + Recent Activity fields from the upcoming-meeting helper
-  (function populateDynamicFields() {
+  // Populate dynamic Club Info + Recent Activity fields from the upcoming-meeting helper.
+  // Named (not IIFE) so we can re-run after the async /api/config fetch updates CONFIG.
+  function populateDynamicFields() {
     const next = upcomingThursdays(1)[0];
     const label = fmtNextMeeting(next);
     const infoNext = document.getElementById('info-next');
@@ -1779,21 +1780,26 @@ ${bot}
       .map(e => ({ ...e, _d: new Date(e.date + 'T00:00:00') }))   // local midnight, not UTC
       .filter(e => !isNaN(e._d) && e._d >= todayMidnight)
       .sort((a, b) => a._d - b._d)[0];
-    if (nextSpecial) {
-      const eventRow = document.getElementById('info-event-row');
-      const eventEl  = document.getElementById('info-event');
-      if (eventRow && eventEl) {
-        eventEl.textContent = `${_Day(nextSpecial._d.getDay())} ${MONTHS_NICE[nextSpecial._d.getMonth()]} ${nextSpecial._d.getDate()} · ${nextSpecial.title}`;
-        eventRow.style.display = '';
-      }
+    const eventRow = document.getElementById('info-event-row');
+    const eventEl  = document.getElementById('info-event');
+    if (nextSpecial && eventRow && eventEl) {
+      eventEl.textContent = `${_Day(nextSpecial._d.getDay())} ${MONTHS_NICE[nextSpecial._d.getMonth()]} ${nextSpecial._d.getDate()} · ${nextSpecial.title}`;
+      eventRow.style.display = '';
+    } else if (eventRow) {
+      // Re-run safety: if there are no upcoming specials, hide a row that
+      // a previous run may have shown.
+      eventRow.style.display = 'none';
     }
-  })();
+  }
+  populateDynamicFields();
 
   /* ============================================================
      APPLY CONFIG — sync the HTML defaults to whatever's in CONFIG
-     so editing the CONFIG block updates the page everywhere
+     so editing the CONFIG block updates the page everywhere.
+     Named (not IIFE) so loadRemoteConfig() can re-run it after
+     fetching admin-edited values from /api/config.
      ============================================================ */
-  (function applyConfig() {
+  function applyConfig() {
     const set = (sel, val) => { const el = document.querySelector(sel); if (el) el.textContent = val; };
     const setHref = (sel, href) => { const el = document.querySelector(sel); if (el) el.href = href; };
 
@@ -1846,7 +1852,47 @@ ${bot}
     // custom-domain "real" site. ?qr=1 forces show, ?qr=0 forces hide (for
     // local testing, since localhost wouldn't otherwise match).
     setupQrWidget();
-  })();
+  }
+  applyConfig();
+
+  /* ============================================================
+     REMOTE CONFIG — fetch admin-edited values from /api/config
+     and merge them over the inline CONFIG defaults, then re-run
+     the apply/populate functions so the page reflects them.
+
+     The inline CONFIG in index.html is the *fallback*: it works
+     when /api/config is unreachable (local file:// preview, KV
+     empty, Worker down). When the API returns a config, we
+     overwrite the editable fields in-place — clubShort, QR
+     settings, and any other infra-only keys stay intact.
+     ============================================================ */
+  const EDITABLE_KEYS = [
+    'clubName', 'campusName', 'founded', 'description',
+    'meetingDay', 'meetingTime', 'meetingRoom',
+    'members', 'specialEvents', 'officers', 'advisor', 'links',
+  ];
+  function mergeRemoteConfig(remote) {
+    if (!remote || typeof remote !== 'object') return;
+    for (const k of EDITABLE_KEYS) {
+      if (remote[k] === undefined) continue;
+      // Arrays and nested objects (advisor, links) are replaced wholesale —
+      // the admin form always sends a complete value for each.
+      CONFIG[k] = remote[k];
+    }
+  }
+  // Kicks off the fetch immediately at module load; resolves as soon as the
+  // API responds (or fails). Returns a promise the boot path waits on (with
+  // a short cap) so the home-page terminal printout reflects the latest
+  // admin-edited values rather than the inline fallback.
+  const remoteConfigReady = fetch('/api/config')
+    .then(r => r.ok ? r.json() : null)
+    .then(remote => {
+      if (!remote) return;
+      mergeRemoteConfig(remote);
+      populateDynamicFields();
+      applyConfig();
+    })
+    .catch(() => {});
 
   function setupQrWidget() {
     const widget = document.getElementById('qr-widget');
@@ -1927,4 +1973,10 @@ ${bot}
       .catch(() => {});
   }, STATS_POLL_MS);
 
-  boot();
+  // Wait for /api/config before booting so the home-page printout uses
+  // admin-edited values. Cap the wait at 500ms — if the API is unreachable
+  // (local file:// preview, Worker down) we fall through to inline defaults.
+  Promise.race([
+    remoteConfigReady,
+    new Promise(r => setTimeout(r, 500)),
+  ]).then(() => boot());
