@@ -634,6 +634,187 @@ function formatElapsed(ms) {
 }
 
 // ============================================================================
+// DISCORD SLASH COMMANDS (/leaderboard)
+// ============================================================================
+//
+// Discord posts interactions to POST /discord/interactions when a user runs
+// our registered slash command. Each request is signed with Ed25519 using
+// the application's public key — we verify before doing anything, including
+// the PING that Discord sends to confirm the endpoint is valid.
+//
+// The endpoint is intentionally outside the /api/admin/* gated path so
+// Discord can reach it without going through Cloudflare Access.
+//
+// Slash commands are registered separately via the admin-only endpoint
+// `POST /api/admin/discord/register-commands` — see handleAdminDiscordRegister
+// below. That's a one-time op (or whenever the command list changes).
+
+function hexToBytes(hex) {
+  if (typeof hex !== 'string' || !/^[0-9a-fA-F]+$/.test(hex) || hex.length % 2) {
+    return null;
+  }
+  const out = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < out.length; i++) {
+    out[i] = parseInt(hex.substr(i * 2, 2), 16);
+  }
+  return out;
+}
+
+async function verifyDiscordSignature(publicKeyHex, signatureHex, timestamp, body) {
+  if (!publicKeyHex || !signatureHex || !timestamp) return false;
+  const pubBytes = hexToBytes(publicKeyHex);
+  const sigBytes = hexToBytes(signatureHex);
+  if (!pubBytes || !sigBytes) return false;
+  try {
+    const key = await crypto.subtle.importKey(
+      'raw', pubBytes, { name: 'Ed25519' }, false, ['verify']
+    );
+    return await crypto.subtle.verify(
+      { name: 'Ed25519' },
+      key,
+      sigBytes,
+      new TextEncoder().encode(timestamp + body)
+    );
+  } catch (_) {
+    return false;
+  }
+}
+
+function formatLeaderboardBoard(board, label) {
+  if (!board.length) return `**${label}**\n_(no entries yet)_`;
+  const lines = board.slice(0, 10).map((e, i) => {
+    const rank = String(i + 1).padStart(2);
+    const user = (e.u || '?').padEnd(12).slice(0, 12);
+    const pts  = String(e.p || 0).padStart(4);
+    const t    = formatElapsed(e.t || 0);
+    const n    = (typeof e.n === 'number') ? `${e.n}/${TOTAL_CHALLENGES}` : '   ';
+    return `${rank}. ${user} ${pts}  ${n}  ${t}`;
+  });
+  return `**${label}**\n\`\`\`\n${lines.join('\n')}\n\`\`\``;
+}
+
+async function handleLeaderboardCommand(env) {
+  const [current, alltime, totalRaw] = await Promise.all([
+    readBoard(env, 'leaderboard:current'),
+    readBoard(env, 'leaderboard:alltime'),
+    env.STATS.get('total_solves'),
+  ]);
+  const total = parseInt(totalRaw, 10) || 0;
+
+  // type:4 = CHANNEL_MESSAGE_WITH_SOURCE — visible to everyone in the channel.
+  // Use a single embed description so the two boards stack predictably; inline
+  // embed fields don't side-by-side reliably once code blocks get involved.
+  return jsonResponse({
+    type: 4,
+    data: {
+      embeds: [{
+        title: '🚩 CTF Leaderboard',
+        description:
+          formatLeaderboardBoard(current, 'Current Term — top 10') +
+          '\n' +
+          formatLeaderboardBoard(alltime, 'All-Time — top 10'),
+        color: 0xffd24f,
+        footer: { text: `${total} flags captured site-wide` },
+      }],
+      allowed_mentions: { parse: [] },
+    },
+  });
+}
+
+async function handleDiscordInteraction(request, env) {
+  if (request.method !== 'POST') {
+    return new Response('method not allowed', { status: 405 });
+  }
+  const publicKey = (env.DISCORD_PUBLIC_KEY || '').trim();
+  if (!publicKey) {
+    return new Response('discord interactions not configured', { status: 503 });
+  }
+
+  const signature = request.headers.get('X-Signature-Ed25519') || '';
+  const timestamp = request.headers.get('X-Signature-Timestamp') || '';
+  // Body must be the raw text — signature is over `timestamp + body`.
+  const body = await request.text();
+
+  const valid = await verifyDiscordSignature(publicKey, signature, timestamp, body);
+  if (!valid) {
+    return new Response('invalid request signature', { status: 401 });
+  }
+
+  let payload;
+  try { payload = JSON.parse(body); }
+  catch (_) { return jsonResponse({ error: 'invalid JSON' }, 400); }
+
+  // type 1 = PING (Discord uses this to verify the endpoint when you save the
+  // Interactions Endpoint URL in the Developer Portal).
+  if (payload.type === 1) return jsonResponse({ type: 1 });
+
+  // type 2 = APPLICATION_COMMAND
+  if (payload.type === 2) {
+    const name = payload.data && payload.data.name;
+    if (name === 'leaderboard') return handleLeaderboardCommand(env);
+    return jsonResponse({
+      type: 4,
+      data: { content: `Unknown command: \`${name}\``, flags: 64 }, // 64 = EPHEMERAL
+    });
+  }
+
+  return jsonResponse({ error: 'unsupported interaction type' }, 400);
+}
+
+// One-time-ish admin endpoint to (re)register the slash command set with
+// Discord. PUT is idempotent — it replaces the full command list for the
+// scope. If DISCORD_GUILD_ID is set, registers as a guild command (instant);
+// otherwise registers globally (~1 hour to propagate).
+async function handleAdminDiscordRegister(request, env, auth) {
+  if (request.method !== 'POST') return jsonResponse({ error: 'POST required' }, 405);
+
+  const token = (env.DISCORD_BOT_TOKEN || '').trim();
+  const appId = (env.DISCORD_APPLICATION_ID || '').trim();
+  if (!token) return jsonResponse({ error: 'DISCORD_BOT_TOKEN not set' }, 503);
+  if (!appId) return jsonResponse({ error: 'DISCORD_APPLICATION_ID not set' }, 503);
+
+  const guildId = (env.DISCORD_GUILD_ID || '').trim();
+  const url = guildId
+    ? `https://discord.com/api/v10/applications/${appId}/guilds/${guildId}/commands`
+    : `https://discord.com/api/v10/applications/${appId}/commands`;
+
+  const commands = [{
+    name: 'leaderboard',
+    description: 'Show current and all-time CTF leaderboards',
+    type: 1, // CHAT_INPUT
+  }];
+
+  try {
+    const res = await fetch(url, {
+      method: 'PUT',
+      headers: DISCORD_HEADERS(token),
+      body: JSON.stringify(commands),
+    });
+    const text = await res.text();
+    if (!res.ok) {
+      return jsonResponse(
+        { error: `discord returned ${res.status}`, body: text.slice(0, 500) },
+        502,
+      );
+    }
+    await appendAudit(env, auth.email, 'discord.register-commands', {
+      scope: guildId ? 'guild' : 'global',
+      guildId: guildId || null,
+      count: commands.length,
+    });
+    return jsonResponse({
+      ok: true,
+      scope: guildId ? 'guild' : 'global',
+      note: guildId
+        ? 'Registered as guild command — available immediately.'
+        : 'Registered as global command — up to 1 hour to propagate.',
+    });
+  } catch (e) {
+    return jsonResponse({ error: (e && e.message) || 'fetch threw' }, 500);
+  }
+}
+
+// ============================================================================
 // CLOUDFLARE ACCESS JWT VERIFICATION
 // ============================================================================
 //
@@ -754,22 +935,26 @@ export default {
     const url = new URL(request.url);
     const p = url.pathname;
 
-    if (p === '/api/stats')        return handleStats(env);
-    if (p === '/api/solve')        return handleSolve(request, env);
-    if (p === '/api/leaderboard')  return handleLeaderboard(env);
-    if (p === '/api/submit-score') return handleSubmitScore(request, env, ctx);
-    if (p === '/api/config')       return handleConfigGet(env);
+    if (p === '/api/stats')           return handleStats(env);
+    if (p === '/api/solve')           return handleSolve(request, env);
+    if (p === '/api/leaderboard')     return handleLeaderboard(env);
+    if (p === '/api/submit-score')    return handleSubmitScore(request, env, ctx);
+    if (p === '/api/config')          return handleConfigGet(env);
+    // Public — must NOT be gated by CF Access; Discord POSTs here directly
+    // and we verify its Ed25519 signature inside the handler instead.
+    if (p === '/discord/interactions') return handleDiscordInteraction(request, env);
 
     if (p.startsWith('/api/admin/')) {
       const gate = await requireAdmin(request, env);
       if (!gate.ok) return gate.response;
       const auth = gate.auth;
-      if (p === '/api/admin/me')                     return jsonResponse({ email: auth.email });
-      if (p === '/api/admin/config')                 return handleAdminConfigPost(request, env, auth);
-      if (p === '/api/admin/leaderboard/delete')     return handleAdminLeaderboardDelete(request, env, auth);
-      if (p === '/api/admin/leaderboard/reset')      return handleAdminLeaderboardReset(request, env, auth);
-      if (p === '/api/admin/audit')                  return handleAdminAudit(env);
-      if (p === '/api/admin/stats')                  return handleAdminStats(env);
+      if (p === '/api/admin/me')                        return jsonResponse({ email: auth.email });
+      if (p === '/api/admin/config')                    return handleAdminConfigPost(request, env, auth);
+      if (p === '/api/admin/leaderboard/delete')        return handleAdminLeaderboardDelete(request, env, auth);
+      if (p === '/api/admin/leaderboard/reset')         return handleAdminLeaderboardReset(request, env, auth);
+      if (p === '/api/admin/audit')                     return handleAdminAudit(env);
+      if (p === '/api/admin/stats')                     return handleAdminStats(env);
+      if (p === '/api/admin/discord/register-commands') return handleAdminDiscordRegister(request, env, auth);
       return jsonResponse({ error: 'unknown admin route' }, 404);
     }
 
