@@ -3,6 +3,40 @@
    inlined in a <style> block; split out so the rendered HTML diff in
    PRs doesn't drown actual content changes in CSS noise. */
 
+/* Symbols-only Nerd Font, served from jsDelivr's GitHub mirror.
+   This font contains only the icon glyphs in the Unicode Private Use Area
+   that the panel-header icons use (CPU, Memory, Disk, Network, etc.).
+   Declared with `unicode-range` so the browser only downloads the file
+   (~500 KB) when one of those codepoints actually needs rendering — the
+   homepage glyphs trigger it, every other character routes to JetBrains
+   Mono first. `font-display: swap` means the rest of the page renders
+   immediately even while the font is loading; icons appear as tofu for
+   the ~200 ms it takes the font to arrive, then snap in.
+   To rotate to a newer Nerd Fonts release, bump the version tag in the
+   URL below — releases live at https://github.com/ryanoasis/nerd-fonts. */
+@font-face {
+  font-family: 'Symbols Nerd Font';
+  src: url('https://cdn.jsdelivr.net/gh/ryanoasis/nerd-fonts@v3.4.0/patched-fonts/NerdFontsSymbolsOnly/SymbolsNerdFontMono-Regular.ttf') format('truetype');
+  font-display: swap;
+  /* Cover every Nerd Fonts glyph range. Material Design Icons (where our
+     CPU/Memory/Disk/Network icons live) are in U+F0001-U+F1AF0; other ranges
+     are included for any future panel icons. Anything outside these ranges
+     falls through to the next font in the stack. */
+  unicode-range:
+    U+23FB-U+23FE, U+2B58,                  /* IEC Power */
+    U+E000-U+E00A,                          /* Pomicons */
+    U+E0A0-U+E0D7,                          /* Powerline */
+    U+E200-U+E2A9,                          /* Font Awesome Extension */
+    U+E300-U+E3EB,                          /* Weather */
+    U+E5FA-U+E6B7,                          /* Seti UI / Custom */
+    U+E700-U+E8EF,                          /* Devicons */
+    U+EA60-U+EC1E,                          /* Codicons */
+    U+F000-U+F2E0,                          /* Font Awesome */
+    U+F300-U+F32F,                          /* Font Logos */
+    U+F400-U+F532,                          /* Octicons */
+    U+F0001-U+F1AF0;                        /* Material Design Icons */
+}
+
   :root {
     /* Oregon Tech palette: navy #033a6b + gold #FFD24F */
     --bg-0: #04111f; --bg-1: #08192e; --bg-2: #0e2542;
@@ -114,7 +148,15 @@
   .panel-header { display: flex; align-items: center; justify-content: space-between;
     padding: 6px 12px; border-bottom: 1px solid var(--border);
     color: var(--text-dim); font-size: 11px; text-transform: uppercase; letter-spacing: .1em; }
-  .panel-header-icon { color: var(--warn); }
+  /* Icon font stacks the symbols-only Nerd Font in FRONT of the regular
+     monospace stack. Letters/punctuation fall through to JetBrains Mono;
+     the PUA glyphs (CPU, Memory, etc.) are picked up by Symbols Nerd Font.
+     If the CDN fails, characters render as tofu — same as before — but
+     the rest of the page is unaffected. */
+  .panel-header-icon {
+    font-family: 'Symbols Nerd Font', 'JetBrains Mono', 'Courier New', monospace;
+    color: var(--warn);
+  }
   .panel-body { padding: 12px; }
 
   /* STATS */
