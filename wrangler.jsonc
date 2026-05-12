@@ -61,7 +61,15 @@
   // If either var is missing at runtime the Worker returns 503 — fail closed.
   "vars": {
     "CF_ACCESS_TEAM_DOMAIN": "oit-cybersec",
-    "CF_ACCESS_AUD": "758341136afedb8e12acae4afb9244a6f6bd38a251ae1fee60e3ee5c6aa19a09"
+    "CF_ACCESS_AUD": "758341136afedb8e12acae4afb9244a6f6bd38a251ae1fee60e3ee5c6aa19a09",
+    // Discord channel-rename status. The hourly cron PATCHes this channel's
+    // name to "🚩-<N>-flags-captured" using DISCORD_BOT_TOKEN (a Worker secret,
+    // set via `npx wrangler secret put DISCORD_BOT_TOKEN`). Until both this ID
+    // and the secret are set, the rename call silently no-ops.
+    //
+    // To find the channel ID: Discord → User Settings → Advanced → enable
+    // Developer Mode, then right-click the channel → "Copy Channel ID".
+    "DISCORD_CHANNEL_ID": "1503818239203872808"
   },
   // Cron triggers — auto-reset the per-term leaderboard at the start of each
   // OIT quarter. All times are UTC; OIT runs on Pacific time (PST = UTC-8 in
@@ -83,7 +91,11 @@
       "0 7 30 9 *",   // Fall   (Sep 30 00:00 PDT = 07:00 UTC)
       "0 8 4 1 *",    // Winter (Jan  4 00:00 PST = 08:00 UTC)
       "0 7 29 3 *",   // Spring (Mar 29 00:00 PDT = 07:00 UTC)
-      "0 7 21 6 *"    // Summer (Jun 21 00:00 PDT = 07:00 UTC)
+      "0 7 21 6 *",   // Summer (Jun 21 00:00 PDT = 07:00 UTC)
+      "0 * * * *"     // Hourly — update Discord channel name with flag count.
+                      // Discord rate-limits channel renames to 2 per 10 min;
+                      // hourly is safely under. src/server.js → scheduled()
+                      // branches on event.cron to route this firing.
     ]
   },
   "compatibility_flags": [
