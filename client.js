@@ -83,8 +83,8 @@
   /* ============================================================
      TAB / PAGE SWITCHING
      ============================================================ */
-  const PAGES = ['home', 'about', 'events', 'contact', 'ctf', 'leaderboard'];
-  const FILES = { home:'index.tsx', about:'about.md', events:'events.json', contact:'contact.sh', ctf:'ctf.md', leaderboard:'ranks.json' };
+  const PAGES = ['home', 'about', 'events', 'contact', 'faq', 'leaderboard'];
+  const FILES = { home:'index.tsx', about:'about.md', events:'events.json', contact:'contact.sh', faq:'faq.md', leaderboard:'ranks.json' };
   function switchTab(name) {
     if (!PAGES.includes(name)) return;
     document.querySelectorAll('.tab').forEach(t =>
@@ -604,28 +604,59 @@ _text
     }
   }
 
-  async function printCtf() {
+  async function printFaq() {
     const g = printGen;
-    await slow('# ctf.md', 'mag', g);
+    await slow('# faq.md', 'mag', g);
     await slowBlank(g);
-    await slow('Welcome to the warm-up CTF. <span class="term-out-mag">10 challenges</span> hidden across this site. All client-side, all solvable from the terminal.', '', g);
+    await slow('Common questions, kept short. The terminal <span class="term-out-ok">help</span> command is the strict reference.', 'dim', g);
     await slowBlank(g);
-    await slowSolveCount(g);
-    await slow('Run <span class="term-out-ok">ctf list</span> to see them, then <span class="term-out-ok">ctf start &lt;n&gt;</span> for any challenge. Submit with <span class="term-out-ok">flag &lt;text&gt;</span>.', 'dim', g);
+
+    // --- About the club ---
+    await slow('<span class="term-out-warn">## About the club</span>', '', g);
     await slowBlank(g);
-    await slow('  <span class="term-out-mag">▸</span> recon — DevTools is your friend', '', g);
-    await slow('  <span class="term-out-mag">▸</span> console — JS execution leaves traces', '', g);
-    await slow('  <span class="term-out-mag">▸</span> base64 — encoding ≠ encryption', '', g);
-    await slow('  <span class="term-out-mag">▸</span> rot13 — substitution cipher classic', '', g);
-    await slow('  <span class="term-out-mag">▸</span> obfuscation — read the JavaScript carefully', '', g);
-    await slow('  <span class="term-out-mag">▸</span> xor — needs real Python (try the <span class="term-out-ok">python</span> command)', '', g);
-    await slow('  <span class="term-out-mag">▸</span> steganography — sometimes data hides in plain sight', '', g);
-    await slow('  <span class="term-out-mag">▸</span> nmap_recon — services talk too much (try the <span class="term-out-ok">nmap</span> command)', '', g);
-    await slow('  <span class="term-out-mag">▸</span> sql_injection — read the SQL the <span class="term-out-ok">login</span> command prints, break the WHERE clause', '', g);
-    await slow('  <span class="term-out-mag">▸</span> jwt_tamper — issue with <span class="term-out-ok">token</span>, inspect with <span class="term-out-ok">jwt-decode</span>, forge with alg=none, present to <span class="term-out-ok">whoami-jwt</span>', '', g);
+    await slow('<span class="term-out-mag">Q:</span> Do I need experience?', '', g);
+    await slow('<span class="term-out-info">A:</span> No. Bring curiosity. We start from wherever you are.', 'dim', g);
     await slowBlank(g);
-    await slow('Type <span class="term-out-ok">hint &lt;n&gt;</span> if stuck. Type <span class="term-out-ok">score</span> for progress. Run <span class="term-out-ok">ctf retry</span> to try again for a better time (keeps your leaderboard name), or <span class="term-out-ok">ctf reset</span> to wipe everything.', 'dim', g);
-    await slow('Progress is saved in this browser via localStorage — survives reloads, but not incognito or other browsers.', 'dim', g);
+    await slow('<span class="term-out-mag">Q:</span> Do I need to be a CS major?', '', g);
+    await slow('<span class="term-out-info">A:</span> No — open to anyone interested in security.', 'dim', g);
+    await slowBlank(g);
+    await slow('<span class="term-out-mag">Q:</span> How do I join?', '', g);
+    await slow(`<span class="term-out-info">A:</span> <a href="${CONFIG.links.signup}" target="_blank" rel="noopener">Sign up on The Roost</a> and show up to whatever meetings you can.`, 'dim', g);
+    await slowBlank(g);
+    await slow('<span class="term-out-mag">Q:</span> What if I can\'t make every meeting?', '', g);
+    await slow('<span class="term-out-info">A:</span> Come to what you can. We don\'t take attendance.', 'dim', g);
+    await slowBlank(g);
+
+    // --- About the CTF ---
+    await slow('<span class="term-out-warn">## About the CTF</span>', '', g);
+    await slowBlank(g);
+    await slow('<span class="term-out-mag">Q:</span> What is a CTF?', '', g);
+    await slow('<span class="term-out-info">A:</span> Capture The Flag. Solve security puzzles, capture flag strings (<span class="term-out-mag">flag{...}</span>), score points.', 'dim', g);
+    await slowBlank(g);
+    await slow('<span class="term-out-mag">Q:</span> How do I play this site\'s CTF?', '', g);
+    await slow('<span class="term-out-info">A:</span> Run <span class="term-out-ok">ctf list</span> for the 10 challenges, <span class="term-out-ok">ctf start &lt;n&gt;</span> to open one, <span class="term-out-ok">flag &lt;text&gt;</span> to submit.', 'dim', g);
+    await slowBlank(g);
+    await slow('<span class="term-out-mag">Q:</span> I\'m stuck.', '', g);
+    await slow(`<span class="term-out-info">A:</span> Run <span class="term-out-ok">hint &lt;n&gt;</span> for a nudge. Or ask in <a href="${CONFIG.links.discord}" target="_blank" rel="noopener">Discord</a> — no shame.`, 'dim', g);
+    await slowBlank(g);
+    await slow('<span class="term-out-mag">Q:</span> Can I try again for a better score?', '', g);
+    await slow('<span class="term-out-info">A:</span> Yes. <span class="term-out-ok">ctf retry</span> clears your solves but keeps your leaderboard name — the new run only replaces your entry if it beats your old score.', 'dim', g);
+    await slowBlank(g);
+    await slow('<span class="term-out-mag">Q:</span> How does the leaderboard rank?', '', g);
+    await slow('<span class="term-out-info">A:</span> Points first (more = higher). Ties broken by faster time. Updates live as you solve.', 'dim', g);
+    await slowBlank(g);
+    await slow('<span class="term-out-mag">Q:</span> When does the leaderboard reset?', '', g);
+    await slow('<span class="term-out-info">A:</span> "This term" resets at the start of each OIT quarter (auto). "All time" never resets.', 'dim', g);
+    await slowBlank(g);
+
+    // --- About the site ---
+    await slow('<span class="term-out-warn">## About the site</span>', '', g);
+    await slowBlank(g);
+    await slow('<span class="term-out-mag">Q:</span> How do I use this thing?', '', g);
+    await slow('<span class="term-out-info">A:</span> Type commands at the prompt. <span class="term-out-ok">help</span> lists them. Tab completes. ↑/↓ scrolls history. Ctrl+L clears.', 'dim', g);
+    await slowBlank(g);
+    await slow('<span class="term-out-mag">Q:</span> Found a bug?', '', g);
+    await slow(`<span class="term-out-info">A:</span> Drop it in <a href="${CONFIG.links.discord}" target="_blank" rel="noopener">Discord</a>, or email any officer (see <a href="#" onclick="switchTab('contact');return false;">contact.sh</a>).`, 'dim', g);
   }
 
   // Render a single leaderboard row inline. Shared between top-10 render and
@@ -709,7 +740,7 @@ _text
 
   async function printPage(name) {
     printGen++;  // any in-flight print sees a stale gen and flushes instantly
-    const printers = { home: printHome, about: printAbout, events: printEvents, contact: printContact, ctf: printCtf, leaderboard: printLeaderboard };
+    const printers = { home: printHome, about: printAbout, events: printEvents, contact: printContact, faq: printFaq, leaderboard: printLeaderboard };
     const fn = printers[name];
     if (!fn) return;
     // Scroll to bottom first so the typewriter effect happens in view
@@ -751,7 +782,7 @@ _text
       }
       // ---- Full categorized list ----
       const cats = {
-        'Pages':     ['home','about','events','contact','ctf'],
+        'Pages':     ['home','about','events','contact','faq','leaderboard'],
         'Network':   ['nmap','ping','dig','whois','traceroute','ifconfig','netstat','curl','ssh','login','token','jwt-decode','whoami-jwt'],
         'Filesystem':['ls','cat','tree','df','pwd'],
         'System':    ['whoami','uname','date','uptime','history','echo','neofetch'],
@@ -785,6 +816,7 @@ _text
     about:   { desc:'Show the about page',    run: () => switchTab('about') },
     events:  { desc:'Show upcoming events',   run: () => switchTab('events') },
     contact: { desc:'Show contact info',      run: () => switchTab('contact') },
+    faq:     { desc:'Show frequently asked questions', run: () => switchTab('faq') },
     home:    { desc:'Go to the home page',    run: () => switchTab('home') },
 
     join:    { desc:'How to join the club', run: () => {
@@ -798,7 +830,8 @@ _text
 
     ls: { desc:'List "files" in this directory', run: () => {
       out('<span class="term-out-info">about.md</span>      <span class="term-out-info">events.json</span>     <span class="term-out-info">contact.sh</span>');
-      out('<span class="term-out-info">ctf.md</span>        <span class="term-out-info">officers.list</span>   <span class="term-out-info">README</span>');
+      out('<span class="term-out-info">faq.md</span>        <span class="term-out-info">ranks.json</span>     <span class="term-out-info">officers.list</span>');
+      out('<span class="term-out-info">README</span>');
     }},
 
     cat: { desc:'Show contents of a "file"', run: (a) => {
@@ -806,7 +839,8 @@ _text
       const fs = {
         'readme':()=>switchTab('home'), 'about.md':()=>switchTab('about'),
         'events.json':()=>switchTab('events'), 'contact.sh':()=>switchTab('contact'),
-        'ctf.md':()=>switchTab('ctf'),
+        'faq.md':()=>switchTab('faq'),
+        'ranks.json':()=>switchTab('leaderboard'),
         'motto.txt':()=>out('"hack the planet — responsibly."', 'mag'),
         'officers.list':()=>switchTab('contact')
       };
@@ -1409,11 +1443,12 @@ _text
       out('├── <span class="term-out-info">events.json</span>');
       out('├── <span class="term-out-info">contact.sh</span>');
       out('├── <span class="term-out-info">officers.list</span>');
-      out('├── <span class="term-out-mag">ctf.md</span>');
+      out('├── <span class="term-out-info">faq.md</span>');
+      out('├── <span class="term-out-mag">ranks.json</span>');
       out('├── motto.txt');
       out('└── <span class="term-out-info">README</span>');
       blank();
-      out('1 directory, 7 files', 'dim');
+      out('1 directory, 8 files', 'dim');
     }},
 
     df: { desc:'Disk usage', run: () => {

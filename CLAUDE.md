@@ -42,7 +42,7 @@ python3 -m http.server 8000
 - **DEFAULT_SITE_CONFIG in `src/server.js`** duplicates the inline `CONFIG` shape, used as the seed when the admin loads the editor before any save has happened. Keep them in sync if you add fields (same pattern as `KNOWN_HASHES` / `CHALLENGE_POINTS` duplication for the CTF).
 
 ### Layout
-- **Top bar**: Owl logo + brand text on the left; tab nav (`home / about / events / contact / ctf`); CTF score badge + "Join us" button on the right.
+- **Top bar**: Owl logo + brand text on the left; tab nav (`home / about / events / contact / faq / leaderboard`); CTF score badge + "Join us" button on the right. The `faq` tab replaced the old `ctf` tab — CTF mechanics live in the `ctf` terminal command (with subcommands `list / start / retry / reset`) and FAQ content + the leaderboard tab cover the player-facing surface.
 - **Three-column grid**: left (system widgets — CPU / memory / disk / network with sparkline), center (page content + terminal), right (club info + quick links + recent activity).
 - **Bottom**: vim-style status bar.
 

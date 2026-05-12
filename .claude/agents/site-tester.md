@@ -37,7 +37,7 @@ PASS if all three match. Otherwise FAIL with which check missed.
 
 ## 2. Tab navigation
 
-For each tab in `['home', 'about', 'events', 'contact', 'ctf']`:
+For each tab in `['home', 'about', 'events', 'contact', 'faq', 'leaderboard']`:
 - Call `switchTab('<name>')` via `preview_eval`
 - Wait 1.5s for typewriter
 - Sample the last ~10 `.term-line.term-out` elements and verify content:
@@ -45,9 +45,10 @@ For each tab in `['home', 'about', 'events', 'contact', 'ctf']`:
   - `about`: should contain "How to get started" and "Two kinds of meetings"
   - `events`: should contain "events.json" and at least one Thursday date
   - `contact`: should contain "officers.list" and at least one officer name from `CONFIG.officers`
-  - `ctf`: should contain "10 challenges" and "jwt_tamper"
+  - `faq`: should contain "faq.md" and "What is a CTF?"
+  - `leaderboard`: should contain "ranks.json" and either an entry row OR "no entries yet"
 
-PASS if all 5 tabs match. FAIL each tab that doesn't.
+PASS if all 6 tabs match. FAIL each tab that doesn't.
 
 ## 3. Terminal commands
 
