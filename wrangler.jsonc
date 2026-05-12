@@ -85,8 +85,8 @@
     // half-set-up deploy doesn't surface as cron errors or 500s.
     "DISCORD_CHANNEL_ID": "1503818239203872808",
     "DISCORD_PUBLIC_KEY": "ce53f22d2d73600d64b79edec0fc0e9a57328d775490ba39288c4f45af6f6327",
-    "DISCORD_APPLICATION_ID": "",
-    "DISCORD_GUILD_ID": ""
+    "DISCORD_APPLICATION_ID": "1503817402260127776",
+    "DISCORD_GUILD_ID": "1502174737046966272"
   },
   // Cron triggers — auto-reset the per-term leaderboard at the start of each
   // OIT quarter. All times are UTC; OIT runs on Pacific time (PST = UTC-8 in
