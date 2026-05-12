@@ -171,7 +171,7 @@ async function handleLeaderboard(env) {
   });
 }
 
-async function handleSubmitScore(request, env) {
+async function handleSubmitScore(request, env, ctx) {
   if (request.method !== 'POST') return jsonResponse({ error: 'POST required' }, 405);
   let body;
   try { body = await request.json(); }
@@ -202,6 +202,16 @@ async function handleSubmitScore(request, env) {
     readBoard(env, 'leaderboard:current'),
     readBoard(env, 'leaderboard:alltime'),
   ]);
+
+  // Capture pre-upsert state for Discord event detection. `wasOnCurrentBefore`
+  // distinguishes "first time appearing on the board" from "score improvement",
+  // and `prevWasComplete` keeps us from re-posting the celebration on every
+  // subsequent submit-score call after a player has already completed all 10.
+  const prevCurrentEntry = current.find(e => e.u === username);
+  const wasOnCurrentBefore = !!prevCurrentEntry;
+  const prevWasComplete = !!prevCurrentEntry &&
+    (prevCurrentEntry.n === TOTAL_CHALLENGES || prevCurrentEntry.p === FULL_POINTS);
+
   const newCurrent = insertOrUpgrade(current, entry);
   const newAlltime = insertOrUpgrade(alltime, entry);
   await Promise.all([
@@ -213,10 +223,29 @@ async function handleSubmitScore(request, env) {
     const i = list.findIndex(e => e.u === username);
     return i < 0 ? null : i + 1;
   };
+  const rankCurrent = findRank(newCurrent);
+
+  // Fire-and-forget Discord notification. waitUntil keeps the Worker alive
+  // past the response so the POST doesn't block the player on Discord's
+  // latency. If post fails (no token, no permission, Discord down), it logs
+  // and the player still sees their score saved.
+  const isFirstCompletion = validIds.length === TOTAL_CHALLENGES && !prevWasComplete;
+  const isFirstLanding = !wasOnCurrentBefore && rankCurrent != null && !isFirstCompletion;
+  if (ctx && (isFirstLanding || isFirstCompletion)) {
+    ctx.waitUntil((async () => {
+      const totalSolves = parseInt(await env.STATS.get('total_solves'), 10) || 0;
+      // Inline-code the username so any markdown chars (_) don't render as
+      // italic, and so it visually reads as a handle on the terminal-themed site.
+      const msg = isFirstCompletion
+        ? `🏆 \`${username}\` completed all 10 CTF challenges! Rank #${rankCurrent} · ${formatElapsed(elapsedMs)} · ${totalSolves} flags captured site-wide`
+        : `🚩 \`${username}\` just landed on the leaderboard at #${rankCurrent} — solved ${validIds.length}/${TOTAL_CHALLENGES} · ${totalSolves} flags captured site-wide`;
+      await postDiscordMessage(env, msg);
+    })());
+  }
 
   return jsonResponse({
     ok: true,
-    rankCurrent: findRank(newCurrent),
+    rankCurrent,
     rankAllTime: findRank(newAlltime),
     current: newCurrent.slice(0, 10),
     alltime: newAlltime.slice(0, 10),
@@ -523,19 +552,30 @@ async function handleAdminAudit(env) {
 }
 
 // ============================================================================
-// DISCORD CHANNEL RENAME (hourly cron)
+// DISCORD INTEGRATION
 // ============================================================================
 //
-// Renames a Discord channel to "🚩-<N>-flags-captured" where N is the current
-// global solve count from KV. Runs on an hourly cron because Discord rate-
-// limits channel name/topic edits to 2 per 10 minutes per channel — hourly
-// is well under that ceiling and survives an occasional retry.
+// Two surfaces, both via the same bot identity:
 //
-// Requires two env values on the production Worker only:
-//   DISCORD_BOT_TOKEN   (secret)  — bot with "Manage Channels" permission
-//   DISCORD_CHANNEL_ID  (var)     — channel snowflake ID to rename
-// If either is missing/blank, the call silently no-ops so a half-configured
-// deploy doesn't surface as a cron error in observability.
+//   1. Hourly channel rename — sets the channel's name to
+//      "🚩-<N>-flags-captured" using total_solves from KV. Hourly stays well
+//      under Discord's 2-per-10-min rename rate limit.
+//
+//   2. Leaderboard event messages — when handleSubmitScore detects a player
+//      first landing on the current-term board, or completing all 10
+//      challenges, it posts a celebratory message to the same channel.
+//
+// Required env on the production Worker:
+//   DISCORD_BOT_TOKEN   (secret)  — bot with Manage Channels + Send Messages
+//   DISCORD_CHANNEL_ID  (var)     — channel snowflake ID to rename + post to
+// If either is missing/blank, both functions silently no-op so a half-
+// configured deploy doesn't surface as cron errors in observability.
+
+const DISCORD_HEADERS = (token) => ({
+  'Authorization': `Bot ${token}`,
+  'Content-Type': 'application/json',
+  'User-Agent': 'CybersecurityClubBot (cloudflare-workers, 1.0)',
+});
 
 async function updateDiscordChannelName(env) {
   const token = (env.DISCORD_BOT_TOKEN || '').trim();
@@ -548,11 +588,7 @@ async function updateDiscordChannelName(env) {
   try {
     const res = await fetch(`https://discord.com/api/v10/channels/${channelId}`, {
       method: 'PATCH',
-      headers: {
-        'Authorization': `Bot ${token}`,
-        'Content-Type': 'application/json',
-        'User-Agent': 'CybersecurityClubBot (cloudflare-workers, 1.0)',
-      },
+      headers: DISCORD_HEADERS(token),
       body: JSON.stringify({ name }),
     });
     if (!res.ok) {
@@ -562,6 +598,39 @@ async function updateDiscordChannelName(env) {
   } catch (e) {
     console.log(`discord channel rename threw: ${e && e.message}`);
   }
+}
+
+// allowed_mentions: { parse: [] } neutralizes any @here / @everyone / role /
+// user mention even though LB_USERNAME_RE already forbids `@` — belt + braces
+// so a future regex change doesn't silently start pinging the server.
+async function postDiscordMessage(env, content) {
+  const token = (env.DISCORD_BOT_TOKEN || '').trim();
+  const channelId = (env.DISCORD_CHANNEL_ID || '').trim();
+  if (!token || !channelId) return;
+
+  try {
+    const res = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages`, {
+      method: 'POST',
+      headers: DISCORD_HEADERS(token),
+      body: JSON.stringify({ content, allowed_mentions: { parse: [] } }),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      console.log(`discord message post failed: ${res.status} ${text.slice(0, 200)}`);
+    }
+  } catch (e) {
+    console.log(`discord message post threw: ${e && e.message}`);
+  }
+}
+
+function formatElapsed(ms) {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${sec}s`;
+  return `${sec}s`;
 }
 
 // ============================================================================
@@ -681,14 +750,14 @@ async function requireAdmin(request, env) {
 // ============================================================================
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const p = url.pathname;
 
     if (p === '/api/stats')        return handleStats(env);
     if (p === '/api/solve')        return handleSolve(request, env);
     if (p === '/api/leaderboard')  return handleLeaderboard(env);
-    if (p === '/api/submit-score') return handleSubmitScore(request, env);
+    if (p === '/api/submit-score') return handleSubmitScore(request, env, ctx);
     if (p === '/api/config')       return handleConfigGet(env);
 
     if (p.startsWith('/api/admin/')) {
