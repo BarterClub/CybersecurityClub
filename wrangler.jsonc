@@ -62,14 +62,31 @@
   "vars": {
     "CF_ACCESS_TEAM_DOMAIN": "oit-cybersec",
     "CF_ACCESS_AUD": "758341136afedb8e12acae4afb9244a6f6bd38a251ae1fee60e3ee5c6aa19a09",
-    // Discord channel-rename status. The hourly cron PATCHes this channel's
-    // name to "🚩-<N>-flags-captured" using DISCORD_BOT_TOKEN (a Worker secret,
-    // set via `npx wrangler secret put DISCORD_BOT_TOKEN`). Until both this ID
-    // and the secret are set, the rename call silently no-ops.
+    // Discord channel-rename status + leaderboard event messages + /leaderboard
+    // slash command. The hourly cron PATCHes this channel's name to
+    // "🚩-<N>-flags-captured", handleSubmitScore posts on first-board-entry
+    // and full-completion events, and POST /discord/interactions answers
+    // slash commands signed with DISCORD_PUBLIC_KEY.
     //
-    // To find the channel ID: Discord → User Settings → Advanced → enable
-    // Developer Mode, then right-click the channel → "Copy Channel ID".
-    "DISCORD_CHANNEL_ID": "1503818239203872808"
+    // Required (set via `npx wrangler secret put` or the dashboard):
+    //   DISCORD_BOT_TOKEN — bot with Manage Channels + Send Messages
+    //
+    // Find these in Discord:
+    //   CHANNEL_ID      → enable Developer Mode (Settings → Advanced) →
+    //                     right-click target channel → "Copy Channel ID"
+    //   PUBLIC_KEY      → Developer Portal → app → General Information
+    //   APPLICATION_ID  → Developer Portal → app → General Information
+    //   GUILD_ID        → right-click your server icon → "Copy Server ID"
+    //                     (optional; if set, /leaderboard registers as a
+    //                     guild command — instant. If blank, global — up
+    //                     to 1 hour to propagate.)
+    //
+    // Until configured, the various integration points silently no-op so a
+    // half-set-up deploy doesn't surface as cron errors or 500s.
+    "DISCORD_CHANNEL_ID": "1503818239203872808",
+    "DISCORD_PUBLIC_KEY": "ce53f22d2d73600d64b79edec0fc0e9a57328d775490ba39288c4f45af6f6327",
+    "DISCORD_APPLICATION_ID": "",
+    "DISCORD_GUILD_ID": ""
   },
   // Cron triggers — auto-reset the per-term leaderboard at the start of each
   // OIT quarter. All times are UTC; OIT runs on Pacific time (PST = UTC-8 in
