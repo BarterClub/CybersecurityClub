@@ -523,6 +523,48 @@ async function handleAdminAudit(env) {
 }
 
 // ============================================================================
+// DISCORD CHANNEL RENAME (hourly cron)
+// ============================================================================
+//
+// Renames a Discord channel to "🚩-<N>-flags-captured" where N is the current
+// global solve count from KV. Runs on an hourly cron because Discord rate-
+// limits channel name/topic edits to 2 per 10 minutes per channel — hourly
+// is well under that ceiling and survives an occasional retry.
+//
+// Requires two env values on the production Worker only:
+//   DISCORD_BOT_TOKEN   (secret)  — bot with "Manage Channels" permission
+//   DISCORD_CHANNEL_ID  (var)     — channel snowflake ID to rename
+// If either is missing/blank, the call silently no-ops so a half-configured
+// deploy doesn't surface as a cron error in observability.
+
+async function updateDiscordChannelName(env) {
+  const token = (env.DISCORD_BOT_TOKEN || '').trim();
+  const channelId = (env.DISCORD_CHANNEL_ID || '').trim();
+  if (!token || !channelId) return;
+
+  const total = parseInt(await env.STATS.get('total_solves'), 10) || 0;
+  const name = `🚩-${total}-flags-captured`;
+
+  try {
+    const res = await fetch(`https://discord.com/api/v10/channels/${channelId}`, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bot ${token}`,
+        'Content-Type': 'application/json',
+        'User-Agent': 'CybersecurityClubBot (cloudflare-workers, 1.0)',
+      },
+      body: JSON.stringify({ name }),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      console.log(`discord channel rename failed: ${res.status} ${text.slice(0, 200)}`);
+    }
+  } catch (e) {
+    console.log(`discord channel rename threw: ${e && e.message}`);
+  }
+}
+
+// ============================================================================
 // CLOUDFLARE ACCESS JWT VERIFICATION
 // ============================================================================
 //
@@ -666,6 +708,14 @@ export default {
   },
 
   async scheduled(event, env, ctx) {
+    // The hourly cron updates the Discord channel name with the current flag
+    // count. Every other configured cron is a quarterly term-start trigger
+    // that resets the per-term leaderboard. Branch on event.cron so we don't
+    // wipe the leaderboard 24× per day.
+    if (event.cron === '0 * * * *') {
+      ctx.waitUntil(updateDiscordChannelName(env));
+      return;
+    }
     await env.STATS.delete('leaderboard:current');
   },
 };
