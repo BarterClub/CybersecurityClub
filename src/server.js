@@ -662,7 +662,24 @@ export default {
       return jsonResponse({ error: 'unknown admin route' }, 404);
     }
 
-    return env.ASSETS.fetch(request);
+    // Static assets — fall through to Cloudflare's static-assets binding,
+    // but override the Cache-Control header on HTML / JS / CSS so browsers
+    // revalidate on every load instead of holding the default 4-hour cache.
+    // That way new deploys are picked up immediately; bandwidth stays low
+    // because unchanged assets return 304. Other assets (fonts, images,
+    // favicons) keep their default longer caching.
+    const assetResponse = await env.ASSETS.fetch(request);
+    const path = p.toLowerCase();
+    if (path.endsWith('.js') || path.endsWith('.css') || path.endsWith('.html') || path === '/' || !path.includes('.')) {
+      const headers = new Headers(assetResponse.headers);
+      headers.set('Cache-Control', 'public, max-age=0, must-revalidate');
+      return new Response(assetResponse.body, {
+        status: assetResponse.status,
+        statusText: assetResponse.statusText,
+        headers,
+      });
+    }
+    return assetResponse;
   },
 
   async scheduled(event, env, ctx) {
