@@ -79,8 +79,8 @@
     cursor: pointer; user-select: none; transition: text-shadow .15s;
     display: inline-flex; align-items: center; gap: 10px; }
   .topbar-brand:hover { text-shadow: 0 0 8px var(--accent-dim); }
-  .topbar-logo { height: 75px; width: auto; display: block; flex-shrink: 0; }
-  @media (max-width: 600px) { .topbar-logo { height: 48px; } }
+  .topbar-logo { height: 48px; width: auto; display: block; flex-shrink: 0; }
+  @media (max-width: 600px) { .topbar-logo { height: 32px; } }
   .tabs { display: flex; gap: 0; flex-wrap: wrap; }
   .tab { padding: 4px 14px; color: var(--text-dim); border-right: 1px solid var(--border);
     cursor: pointer; transition: all .15s; text-decoration: none; background: none; border-top: none; border-bottom: none; border-left: none; font: inherit;
