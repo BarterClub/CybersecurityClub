@@ -707,7 +707,6 @@ _text
     await slow('  <span class="term-out-info">Win11</span>     domain-joined workstation', '', g);
     await slow('  <span class="term-out-info">Kali</span>      your attack platform', '', g);
     await slow('  <span class="term-out-info">Wazuh</span>     blue-team SIEM — log analysis, detection rules', '', g);
-    await slow('  <span class="term-out-info">Splunk</span>    additional log analytics', '', g);
     await slowBlank(g);
     await slow('Several AD attack paths are baked into the domain. Find them with BloodHound, Rubeus, impacket — whatever your tool of choice is.', 'dim', g);
     await slowBlank(g);
