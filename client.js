@@ -97,6 +97,23 @@
   document.querySelectorAll('.tab').forEach(t =>
     t.addEventListener('click', () => switchTab(t.dataset.tab)));
 
+  // Hidden deep-link routes — pages that exist in PAGES but have no visible
+  // tab button (e.g. `lab` is members-only; we share the #lab URL with people
+  // who have lab access, never with the public). If the URL has a #fragment
+  // matching a known page, swap to it shortly after boot finishes. Boot's
+  // home-page printer still runs first; this just navigates away from it.
+  if (location.hash) {
+    const target = location.hash.replace(/^#/, '');
+    if (PAGES.includes(target) && target !== 'home') {
+      // Defer so the boot animation has time to paint before we switch.
+      setTimeout(() => switchTab(target), 600);
+    }
+  }
+  window.addEventListener('hashchange', () => {
+    const target = location.hash.replace(/^#/, '');
+    if (PAGES.includes(target)) switchTab(target);
+  });
+
   /* ============================================================
      CTF STATE
      ============================================================
