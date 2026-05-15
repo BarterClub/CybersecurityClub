@@ -120,8 +120,19 @@
     .col { overflow: visible; overflow-x: hidden; min-width: 0; max-width: 100%; }
     .col > .panel { min-width: 0; max-width: 100%; }
     .layout > main.col { order: 1; }
-    .layout > aside.col:first-of-type { order: 2; }
-    .layout > aside.col:last-of-type { order: 3; }
+    /* Right column (Club Info / Quick Links / Recent Activity) rises directly
+       under the terminal on small screens — those panels are what visitors
+       actually want first. Left column (decorative simulated system widgets)
+       drops to the bottom. */
+    .layout > aside.col:last-of-type  { order: 2; }
+    .layout > aside.col:first-of-type { order: 3; }
+    /* Inside the right aside on mobile, surface Quick Links before Club Info.
+       Desktop HTML order is Club Info → Quick Links → Recent Activity, so we
+       flip the first two via `order` rather than touching the markup — keeps
+       the desktop right-column layout intact. */
+    .layout > aside.col:last-of-type > .panel:nth-child(1) { order: 2; } /* Club Info */
+    .layout > aside.col:last-of-type > .panel:nth-child(2) { order: 1; } /* Quick Links */
+    .layout > aside.col:last-of-type > .panel:nth-child(3) { order: 3; } /* Recent Activity */
     /* Override the desktop flex sizing — give the terminal a real height */
     .layout > main.col > .panel { flex: none !important; min-height: 0 !important; }
     #term { flex: none !important; height: 60vh !important; min-height: 400px !important; }
