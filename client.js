@@ -83,8 +83,8 @@
   /* ============================================================
      TAB / PAGE SWITCHING
      ============================================================ */
-  const PAGES = ['home', 'about', 'events', 'contact', 'faq', 'leaderboard'];
-  const FILES = { home:'index.tsx', about:'about.md', events:'events.json', contact:'contact.sh', faq:'faq.md', leaderboard:'ranks.json' };
+  const PAGES = ['home', 'about', 'events', 'contact', 'lab', 'faq', 'leaderboard'];
+  const FILES = { home:'index.tsx', about:'about.md', events:'events.json', contact:'contact.sh', lab:'lab.sh', faq:'faq.md', leaderboard:'ranks.json' };
   function switchTab(name) {
     if (!PAGES.includes(name)) return;
     document.querySelectorAll('.tab').forEach(t =>
@@ -659,6 +659,50 @@ _text
     await slow(`<span class="term-out-info">A:</span> Drop it in <a href="${CONFIG.links.discord}" target="_blank" rel="noopener">Discord</a>, or email any officer (see <a href="#" onclick="switchTab('contact');return false;">contact.sh</a>).`, 'dim', g);
   }
 
+  async function printLab() {
+    const g = printGen;
+    await slow('# lab.sh — members-only practice environment', 'mag', g);
+    await slowBlank(g);
+    await slow('Live isolated CTF lab for hands-on practice. All access is gated by Cloudflare Access — your email must be on the lab allowlist before any of the URLs below will work.', 'dim', g);
+    await slowBlank(g);
+
+    // --- Services ---
+    await slow('<span class="term-out-warn">## Services</span>', '', g);
+    await slowBlank(g);
+    await slow('  <span class="term-out-ok">[+]</span> <span class="term-out-info">CTFd</span>                <a href="https://ctf.oitcybersec.org" target="_blank" rel="noopener">ctf.oitcybersec.org</a>      <span class="term-out-dim">— CTF challenges + flags</span>', '', g);
+    await slow('  <span class="term-out-ok">[+]</span> <span class="term-out-info">Kali</span> <span class="term-out-dim">(Browser SSH)</span>  <a href="https://kali.oitcybersec.org" target="_blank" rel="noopener">kali.oitcybersec.org</a>     <span class="term-out-dim">— attack platform, terminal in browser</span>', '', g);
+    await slow('  <span class="term-out-ok">[+]</span> <span class="term-out-info">Proxmox</span>             <a href="https://proxmox.oitcybersec.org" target="_blank" rel="noopener">proxmox.oitcybersec.org</a>  <span class="term-out-dim">— VM management (officers + advanced)</span>', '', g);
+    await slowBlank(g);
+
+    // --- How to get access ---
+    await slow('<span class="term-out-warn">## How to get access</span>', '', g);
+    await slowBlank(g);
+    await slow(`  <span class="term-out-mag">1.</span> Ask an officer to add your email to the lab allowlist <span class="term-out-dim">(see <a href="#" onclick="switchTab('contact');return false;">contact.sh</a>)</span>`, '', g);
+    await slow('  <span class="term-out-mag">2.</span> Visit any of the URLs above', '', g);
+    await slow('  <span class="term-out-mag">3.</span> Enter your email — Cloudflare sends a 6-digit one-time code', '', g);
+    await slow('  <span class="term-out-mag">4.</span> Submit the code — you\'re in', '', g);
+    await slowBlank(g);
+
+    // --- What's in the lab ---
+    await slow('<span class="term-out-warn">## What\'s in the lab</span>', '', g);
+    await slowBlank(g);
+    await slow('  <span class="term-out-info">DC01</span>      Windows Server 2019 — Active Directory domain controller', '', g);
+    await slow('  <span class="term-out-info">Win11</span>     domain-joined workstation', '', g);
+    await slow('  <span class="term-out-info">Kali</span>      your attack platform', '', g);
+    await slow('  <span class="term-out-info">Wazuh</span>     blue-team SIEM — log analysis, detection rules', '', g);
+    await slow('  <span class="term-out-info">Splunk</span>    additional log analytics', '', g);
+    await slowBlank(g);
+    await slow('Several AD attack paths are baked into the domain. Find them with BloodHound, Rubeus, impacket — whatever your tool of choice is.', 'dim', g);
+    await slowBlank(g);
+
+    // --- Etiquette ---
+    await slow('<span class="term-out-warn">## Lab etiquette</span>', '', g);
+    await slowBlank(g);
+    await slow('  • Don\'t attempt to escape the lab subnet — it\'s isolated for a reason', '', g);
+    await slow('  • Shared environment — restore a VM snapshot if you break something material', '', g);
+    await slow(`  • Help each other out in <a href="${CONFIG.links.discord}" target="_blank" rel="noopener">Discord</a> #ctf channel; brag when you root the DC`, '', g);
+  }
+
   // Render a single leaderboard row inline. Shared between top-10 render and
   // the "below top 10" neighbor render so formatting stays in lockstep.
   // - rank is 1-indexed display position.
@@ -740,7 +784,7 @@ _text
 
   async function printPage(name) {
     printGen++;  // any in-flight print sees a stale gen and flushes instantly
-    const printers = { home: printHome, about: printAbout, events: printEvents, contact: printContact, faq: printFaq, leaderboard: printLeaderboard };
+    const printers = { home: printHome, about: printAbout, events: printEvents, contact: printContact, lab: printLab, faq: printFaq, leaderboard: printLeaderboard };
     const fn = printers[name];
     if (!fn) return;
     // Scroll to bottom first so the typewriter effect happens in view
