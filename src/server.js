@@ -959,16 +959,32 @@ export default {
     }
 
     // Static assets — fall through to Cloudflare's static-assets binding,
-    // but override the Cache-Control header on HTML / JS / CSS so browsers
-    // revalidate on every load instead of holding the default 4-hour cache.
-    // That way new deploys are picked up immediately; bandwidth stays low
-    // because unchanged assets return 304. Other assets (fonts, images,
-    // favicons) keep their default longer caching.
+    // but override Cache-Control on HTML / JS / CSS to balance fast deploy
+    // propagation against mobile page-load performance.
+    //
+    //   max-age=300                 → 5 min hard cache. A normal browsing
+    //                                 session skips revalidation round-trips
+    //                                 entirely. (The previous max-age=0
+    //                                 + must-revalidate forced a 304 round-
+    //                                 trip on every navigation, ~150–600 ms
+    //                                 of extra latency on mobile per asset,
+    //                                 visibly hurting FCP/LCP.)
+    //   stale-while-revalidate=86400 → after the 5 min hard cache, serve
+    //                                 the stale copy instantly AND fetch
+    //                                 the new version in the background.
+    //                                 So the SECOND pageview after a deploy
+    //                                 already has the new code without ever
+    //                                 making the user wait.
+    //
+    // User-facing content (announcement banner, members count, etc.) lives
+    // in KV behind /api/config, which is `no-store` and always fresh — so
+    // editor changes propagate to the next pageload regardless of this
+    // header. Code/CSS changes propagate within ~5 min for active users.
     const assetResponse = await env.ASSETS.fetch(request);
     const path = p.toLowerCase();
     if (path.endsWith('.js') || path.endsWith('.css') || path.endsWith('.html') || path === '/' || !path.includes('.')) {
       const headers = new Headers(assetResponse.headers);
-      headers.set('Cache-Control', 'public, max-age=0, must-revalidate');
+      headers.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=86400');
       return new Response(assetResponse.body, {
         status: assetResponse.status,
         statusText: assetResponse.statusText,
