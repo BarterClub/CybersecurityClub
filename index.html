@@ -121,7 +121,12 @@
      woff2 file at /fonts/JetBrainsMono-latin.woff2. The previous Google
      Fonts <link> was render-blocking for ~750 ms on mobile (two cold third-
      party round-trips before paint), which showed up as a regression on
-     the PageSpeed mobile report. -->
+     the PageSpeed mobile report.
+     The <link rel="preload"> below starts the font fetch in parallel with
+     the HTML/CSS download so the LCP element (the ASCII art) doesn't get
+     re-painted ~600 ms in when the font finally swaps — measured via
+     PerformanceObserver before/after this hint was added. -->
+<link rel="preload" as="font" type="font/woff2" href="/fonts/JetBrainsMono-latin.woff2" crossorigin>
 <link rel="stylesheet" href="styles.css">
 </head>
 <body data-z="ZmxhZ3tjc3NfZGF0YV9hdHRyc19hcmVfdmlzaWJsZX0=">
