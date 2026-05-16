@@ -37,6 +37,31 @@
     U+F0001-U+F1AF0;                        /* Material Design Icons */
 }
 
+/* JetBrains Mono — self-hosted Latin subset. Previously loaded via
+   <link href="fonts.googleapis.com/..."> in the head, which is render-
+   blocking and required two cold third-party round-trips (googleapis →
+   gstatic) before the browser could paint — visible regression on the
+   mobile PageSpeed report.
+   This is the same .woff2 Google serves for `subset=latin` of the
+   JetBrains Mono variable font, fetched from gstatic and committed at
+   /fonts/JetBrainsMono-latin.woff2 (~31 KB). Variable axis spans wght
+   100..800, so a single declaration covers both 400 (body) and 700
+   (headers / bold accents) without a second file.
+   `unicode-range` mirrors Google's latin subset: anything outside it
+   falls through to the next font in the stack (Courier New / monospace).
+   To pull a new version, rerun the curl command in commit history.
+   License: SIL Open Font License (redistribution allowed). */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 100 800;
+  font-display: swap;
+  src: url('/fonts/JetBrainsMono-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6,
+    U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122,
+    U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
   :root {
     /* Oregon Tech palette: navy #033a6b + gold #FFD24F */
     --bg-0: #04111f; --bg-1: #08192e; --bg-2: #0e2542;

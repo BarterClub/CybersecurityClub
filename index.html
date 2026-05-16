@@ -117,10 +117,11 @@
   ============================================================
 -->
 
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
-
+<!-- JetBrains Mono is now self-hosted — @font-face declared in styles.css,
+     woff2 file at /fonts/JetBrainsMono-latin.woff2. The previous Google
+     Fonts <link> was render-blocking for ~750 ms on mobile (two cold third-
+     party round-trips before paint), which showed up as a regression on
+     the PageSpeed mobile report. -->
 <link rel="stylesheet" href="styles.css">
 </head>
 <body data-z="ZmxhZ3tjc3NfZGF0YV9hdHRyc19hcmVfdmlzaWJsZX0=">
