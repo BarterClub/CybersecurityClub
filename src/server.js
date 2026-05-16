@@ -94,6 +94,24 @@ function jsonResponse(obj, status = 200) {
   });
 }
 
+// Picks the Cache-Control value for a static-asset path. See the comment
+// block in the router for the why behind each bucket. Returns null for
+// path types we don't override (e.g. unknown extensions) — those keep
+// Cloudflare's default.
+function pickCacheControl(path) {
+  if (path.endsWith('.js') || path.endsWith('.css') || path.endsWith('.html') ||
+      path === '/' || !path.includes('.')) {
+    return 'public, max-age=300, stale-while-revalidate=86400';
+  }
+  if (/\.(woff2|woff|ttf|otf|eot)$/.test(path)) {
+    return 'public, max-age=604800, stale-while-revalidate=2592000';
+  }
+  if (/\.(png|jpg|jpeg|svg|gif|webp|avif|ico)$/.test(path)) {
+    return 'public, max-age=86400, stale-while-revalidate=604800';
+  }
+  return null;
+}
+
 async function handleStats(env) {
   const raw = await env.STATS.get('total_solves');
   return jsonResponse({ total: parseInt(raw, 10) || 0 });
@@ -959,32 +977,37 @@ export default {
     }
 
     // Static assets — fall through to Cloudflare's static-assets binding,
-    // but override Cache-Control on HTML / JS / CSS to balance fast deploy
-    // propagation against mobile page-load performance.
+    // but override Cache-Control per asset type. Cloudflare's default for
+    // static assets is ~4h; that's fine for HTML during dev but leaves
+    // gains on the floor for fonts/images that essentially never change.
     //
-    //   max-age=300                 → 5 min hard cache. A normal browsing
-    //                                 session skips revalidation round-trips
-    //                                 entirely. (The previous max-age=0
-    //                                 + must-revalidate forced a 304 round-
-    //                                 trip on every navigation, ~150–600 ms
-    //                                 of extra latency on mobile per asset,
-    //                                 visibly hurting FCP/LCP.)
-    //   stale-while-revalidate=86400 → after the 5 min hard cache, serve
-    //                                 the stale copy instantly AND fetch
-    //                                 the new version in the background.
-    //                                 So the SECOND pageview after a deploy
-    //                                 already has the new code without ever
-    //                                 making the user wait.
+    // Three buckets, all using stale-while-revalidate so updates propagate
+    // to the next pageview after a deploy without anyone ever waiting:
+    //
+    //   HTML / JS / CSS   max-age=300  swr=86400    (5 min + 1 day)
+    //     Frequently-edited code. Short hot cache so changes go live fast.
+    //     Replaces the previous `max-age=0, must-revalidate` which forced
+    //     a 304 round-trip per navigation — ~150–600 ms mobile latency.
+    //
+    //   Fonts             max-age=604800  swr=2592000  (1 week + 30 days)
+    //     Essentially immutable. If JetBrains Mono is ever replaced, also
+    //     rename the woff2 (e.g. ...v2.woff2) and update styles.css so
+    //     browsers fetch the new file via a new URL.
+    //
+    //   Images            max-age=86400  swr=604800   (1 day + 1 week)
+    //     Logos / favicons / screenshots. Change rarely but DO change;
+    //     a day of hot cache balances repeat-visit speed against update
+    //     propagation. SWR window means updates land within ~1 day.
     //
     // User-facing content (announcement banner, members count, etc.) lives
-    // in KV behind /api/config, which is `no-store` and always fresh — so
-    // editor changes propagate to the next pageload regardless of this
-    // header. Code/CSS changes propagate within ~5 min for active users.
+    // in KV behind /api/config which is `no-store` and always fresh — so
+    // editor changes propagate to the next pageload regardless of any of
+    // these headers.
     const assetResponse = await env.ASSETS.fetch(request);
-    const path = p.toLowerCase();
-    if (path.endsWith('.js') || path.endsWith('.css') || path.endsWith('.html') || path === '/' || !path.includes('.')) {
+    const cacheHeader = pickCacheControl(p.toLowerCase());
+    if (cacheHeader) {
       const headers = new Headers(assetResponse.headers);
-      headers.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=86400');
+      headers.set('Cache-Control', cacheHeader);
       return new Response(assetResponse.body, {
         status: assetResponse.status,
         statusText: assetResponse.statusText,
