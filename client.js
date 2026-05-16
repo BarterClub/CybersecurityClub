@@ -508,7 +508,15 @@ _text
 
   async function printHome() {
     const g = printGen;
-    await slow(`<pre class="ascii-art">
+    // On first load, the ASCII art is already rendered statically in the HTML
+    // as #boot-splash — see the comment in index.html for the LCP rationale.
+    // Claim it by stripping the id so subsequent printHome calls (banner
+    // command, tab switch back to home) typewrite a fresh copy normally.
+    const splash = document.getElementById('boot-splash');
+    if (splash) {
+      splash.removeAttribute('id');
+    } else {
+      await slow(`<pre class="ascii-art">
  ██████╗██╗   ██╗██████╗ ███████╗██████╗ ███████╗███████╗ ██████╗
 ██╔════╝╚██╗ ██╔╝██╔══██╗██╔════╝██╔══██╗██╔════╝██╔════╝██╔════╝
 ██║      ╚████╔╝ ██████╔╝█████╗  ██████╔╝███████╗█████╗  ██║
@@ -517,6 +525,7 @@ _text
  ╚═════╝   ╚═╝   ╚═════╝ ╚══════╝╚═╝  ╚═╝╚══════╝╚══════╝ ╚═════╝
               ${CONFIG.campusName} · Hustlin' Owls
 </pre>`, '', g);
+    }
     await slow(`<span class="term-out-ok">$</span> Welcome to the ${CONFIG.clubName} Terminal v1.0.0`, '', g);
     await slow(`${CONFIG.campusName} · ${CONFIG.description}`, 'dim', g);
     await slowBlank(g);

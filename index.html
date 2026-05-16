@@ -225,7 +225,27 @@
       <div class="terminal" id="term" tabindex="0" role="region" aria-label="Interactive terminal" style="flex:1; height:auto; min-height:0; margin:0; border:0;">
         <!-- aria-live=polite: new lines from page printers + commands get announced
              to screen readers without interrupting in-progress speech. -->
-        <div class="term-output" id="term-output" aria-live="polite" aria-atomic="false"></div>
+        <div class="term-output" id="term-output" aria-live="polite" aria-atomic="false">
+          <!-- LCP-priority splash: this ASCII art is the largest element on the page,
+               so PageSpeed picks it as the Largest Contentful Paint target. Rendering
+               it statically (instead of letting the boot typewriter draw it ~5 s in)
+               lets LCP fire at first paint. printHome() detects the `id="boot-splash"`
+               on first load, strips the id (claiming the element), and skips its own
+               typewritten copy — so the user sees this same art, never a duplicate.
+               Subsequent home-page renders (e.g. via the `banner` command or returning
+               from another tab) print the typewritten version normally below.
+               The campus-name line below uses the default value; admin overrides to
+               CONFIG.campusName apply to any re-print via the typewriter. -->
+          <pre class="ascii-art" id="boot-splash">
+ ██████╗██╗   ██╗██████╗ ███████╗██████╗ ███████╗███████╗ ██████╗
+██╔════╝╚██╗ ██╔╝██╔══██╗██╔════╝██╔══██╗██╔════╝██╔════╝██╔════╝
+██║      ╚████╔╝ ██████╔╝█████╗  ██████╔╝███████╗█████╗  ██║
+██║       ╚██╔╝  ██╔══██╗██╔══╝  ██╔══██╗╚════██║██╔══╝  ██║
+╚██████╗   ██║   ██████╔╝███████╗██║  ██║███████║███████╗╚██████╗
+ ╚═════╝   ╚═╝   ╚═════╝ ╚══════╝╚═╝  ╚═╝╚══════╝╚══════╝ ╚═════╝
+              Oregon Tech Portland-Metro · Hustlin' Owls
+          </pre>
+        </div>
         <div class="term-input-line">
           <span class="term-prompt" aria-hidden="true">hacker@cybersec</span>
           <span class="term-path" id="term-path" aria-hidden="true">~/projects</span>
