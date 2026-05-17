@@ -59,13 +59,13 @@ const DEFAULT_SITE_CONFIG = {
   ],
   members: 12,
   officers: [
-    { role: 'President',        name: 'Joshua Brady',     email: 'joshua.brady@oit.edu',     main: true },
-    { role: 'Vice-President',   name: 'Anteneh Demissie', email: 'anteneh.demissie@oit.edu' },
-    { role: 'Treasurer',        name: 'Chris Hall',       email: 'chris.hall@oit.edu' },
-    { role: 'Secretary',        name: 'Scott Reinholtz',  email: 'scott.reinholtz@oit.edu' },
-    { role: 'Training Officer', name: 'Miguel Torres',    email: 'miguel.torres@oit.edu' },
+    { role: 'President',        name: 'Joshua Brady',     main: true },
+    { role: 'Vice-President',   name: 'Anteneh Demissie' },
+    { role: 'Treasurer',        name: 'Chris Hall' },
+    { role: 'Secretary',        name: 'Scott Reinholtz' },
+    { role: 'Training Officer', name: 'Miguel Torres' },
   ],
-  advisor: { name: 'Malini Nagasundaram', email: 'malini.nagasundaram@oit.edu' },
+  advisor: { name: 'Malini Nagasundaram' },
   links: {
     signup:  'https://theroost.oit.edu/PMCYB/club_signup',
     roost:   'https://theroost.oit.edu/feeds?type=club&type_id=35576&tab=about',
@@ -323,9 +323,9 @@ function validateSiteConfig(input) {
   out.officers = [];
   for (const [i, o] of input.officers.entries()) {
     if (!o || typeof o !== 'object') return { ok: false, error: `officer #${i+1} invalid` };
-    const role = str(o.role, 80), name = str(o.name, 120), email = str(o.email, 200);
-    if (!role || !name || !email) return { ok: false, error: `officer #${i+1} missing role/name/email` };
-    const entry = { role, name, email };
+    const role = str(o.role, 80), name = str(o.name, 120);
+    if (!role || !name) return { ok: false, error: `officer #${i+1} missing role/name` };
+    const entry = { role, name };
     if (o.main === true) entry.main = true;
     out.officers.push(entry);
   }
@@ -334,9 +334,8 @@ function validateSiteConfig(input) {
     return { ok: false, error: 'advisor must be an object' };
   }
   const advName = str(input.advisor.name, 120);
-  const advEmail = str(input.advisor.email, 200);
-  if (!advName || !advEmail) return { ok: false, error: 'advisor missing name/email' };
-  out.advisor = { name: advName, email: advEmail };
+  if (!advName) return { ok: false, error: 'advisor missing name' };
+  out.advisor = { name: advName };
 
   if (!input.links || typeof input.links !== 'object') {
     return { ok: false, error: 'links must be an object' };

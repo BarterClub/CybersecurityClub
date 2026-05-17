@@ -89,7 +89,6 @@ function renderOfficer(o) {
   div.innerHTML = `
     <input class="of-role"  type="text" placeholder="Role"  maxlength="80"  value="${escapeHtml(o.role || '')}">
     <input class="of-name"  type="text" placeholder="Name"  maxlength="120" value="${escapeHtml(o.name || '')}">
-    <input class="of-email" type="email" placeholder="email@oit.edu" maxlength="200" value="${escapeHtml(o.email || '')}">
     <button type="button" class="main-tag${o.main ? ' on' : ''}" title="Mark as primary contact">&#9733;</button>
     <div class="row-actions">
       <button type="button" class="btn btn-small btn-danger of-del">remove</button>
@@ -135,7 +134,6 @@ function populateForm(cfg) {
   (cfg.officers || []).forEach(o => offList.appendChild(renderOfficer(o)));
 
   $('f-advisor-name').value  = (cfg.advisor && cfg.advisor.name)  || '';
-  $('f-advisor-email').value = (cfg.advisor && cfg.advisor.email) || '';
 
   $('f-link-signup').value  = (cfg.links && cfg.links.signup)  || '';
   $('f-link-roost').value   = (cfg.links && cfg.links.roost)   || '';
@@ -154,11 +152,10 @@ function populateForm(cfg) {
 function collectForm() {
   const officers = [];
   document.querySelectorAll('#officers-list .row-officer').forEach(row => {
-    const role  = row.querySelector('.of-role').value.trim();
-    const name  = row.querySelector('.of-name').value.trim();
-    const email = row.querySelector('.of-email').value.trim();
-    if (!role && !name && !email) return;
-    const entry = { role, name, email };
+    const role = row.querySelector('.of-role').value.trim();
+    const name = row.querySelector('.of-name').value.trim();
+    if (!role && !name) return;
+    const entry = { role, name };
     if (row.querySelector('.main-tag').classList.contains('on')) entry.main = true;
     officers.push(entry);
   });
@@ -195,8 +192,7 @@ function collectForm() {
     members:     Number($('f-members').value),
     officers,
     advisor: {
-      name:  $('f-advisor-name').value.trim(),
-      email: $('f-advisor-email').value.trim(),
+      name: $('f-advisor-name').value.trim(),
     },
     links: {
       signup:  $('f-link-signup').value.trim(),

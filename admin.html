@@ -72,7 +72,7 @@
     border: 1px solid var(--border); background: var(--bg-2);
     padding: 8px;
   }
-  .row-officer  { grid-template-columns: 1fr 1fr 1.5fr auto auto; }
+  .row-officer  { grid-template-columns: 1fr 1fr auto auto; }
   .row-event    { grid-template-columns: 130px 1fr 1.5fr auto; }
   .row-lb       { grid-template-columns: 1fr 80px 100px 80px auto; }
   @media (max-width: 700px) {
@@ -266,15 +266,9 @@
   <section class="panel">
     <h2>advisor</h2>
     <p class="note">Faculty advisor — rendered separately from the officer list.</p>
-    <div class="grid-2">
-      <div class="field">
-        <label for="f-advisor-name">name</label>
-        <input id="f-advisor-name" type="text" maxlength="120">
-      </div>
-      <div class="field">
-        <label for="f-advisor-email">email</label>
-        <input id="f-advisor-email" type="email" maxlength="200">
-      </div>
+    <div class="field">
+      <label for="f-advisor-name">name</label>
+      <input id="f-advisor-name" type="text" maxlength="120">
     </div>
   </section>
 
