@@ -688,6 +688,7 @@ _text
     await slowBlank(g);
     await slow('  <span class="term-out-ok">[+]</span> <span class="term-out-info">CTFd</span>                <a href="https://ctf.oitcybersec.org" target="_blank" rel="noopener">ctf.oitcybersec.org</a>      <span class="term-out-dim">— CTF challenges + flags</span>', '', g);
     await slow('  <span class="term-out-ok">[+]</span> <span class="term-out-info">Kali</span> <span class="term-out-dim">(Browser SSH)</span>  <a href="https://kali.oitcybersec.org" target="_blank" rel="noopener">kali.oitcybersec.org</a>     <span class="term-out-dim">— attack platform, terminal in browser</span>', '', g);
+    await slow('  <span class="term-out-ok">[+]</span> <span class="term-out-info">Wazuh</span>               <a href="https://wazuh.oitcybersec.org" target="_blank" rel="noopener">wazuh.oitcybersec.org</a>    <span class="term-out-dim">— SIEM dashboard (blue-team practice)</span>', '', g);
     await slow('  <span class="term-out-ok">[+]</span> <span class="term-out-info">Proxmox</span>             <a href="https://proxmox.oitcybersec.org" target="_blank" rel="noopener">proxmox.oitcybersec.org</a>  <span class="term-out-dim">— VM management (officers + advanced)</span>', '', g);
     await slowBlank(g);
 
