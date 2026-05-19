@@ -83,8 +83,8 @@
   /* ============================================================
      TAB / PAGE SWITCHING
      ============================================================ */
-  const PAGES = ['home', 'about', 'events', 'contact', 'lab', 'faq', 'leaderboard'];
-  const FILES = { home:'index.tsx', about:'about.md', events:'events.json', contact:'contact.sh', lab:'lab.sh', faq:'faq.md', leaderboard:'ranks.json' };
+  const PAGES = ['home', 'about', 'events', 'contact', 'lab', 'faq', 'projects', 'leaderboard'];
+  const FILES = { home:'index.tsx', about:'about.md', events:'events.json', contact:'contact.sh', lab:'lab.sh', faq:'faq.md', projects:'projects.md', leaderboard:'ranks.json' };
   function switchTab(name) {
     if (!PAGES.includes(name)) return;
     document.querySelectorAll('.tab').forEach(t =>
@@ -729,6 +729,65 @@ _text
     await slow(`  • Help each other out in <a href="${CONFIG.links.discord}" target="_blank" rel="noopener">Discord</a> #ctf channel; brag when you root the DC`, '', g);
   }
 
+  // PREVIEW: sample projects.md tab. Inline data for now — if we keep this tab,
+  // promote `PROJECTS` to CONFIG.projects + admin-console editor (see CLAUDE.md
+  // "Adding a new editable field"). Status pill colors:
+  //   active   → ok    (green)
+  //   shipped  → info  (blue)
+  //   archived → dim
+  async function printProjects() {
+    const g = printGen;
+    const PROJECTS = [
+      { name: 'Proxmox AD Lab', status: 'active',
+        desc: 'The OIT Cybersecurity Club has been building a self-hosted training environment in a Proxmox home lab to give members realistic hands-on experience. The setup runs two Windows Server 2019 domain controllers, a domain-joined Windows 10 workstation, and a Kali Linux attacker box on an isolated VLAN — together forming a small Active Directory environment where members can practice the full attack chain from network recon through domain compromise, then turn around and study the same attacks from the defender\'s side. This gives the club a permanent, low-stakes playground for weekly workshops, internal CTFs, and certification prep without touching production systems.',
+        tech: ['Proxmox', 'Windows Server 2019', 'Active Directory', 'Kali Linux'],
+        members: ['Officers, and other members'],
+        link: null },
+      { name: 'Site CTF (10 challenges)', status: 'shipped',
+        desc: 'In-browser CTF covering recon, encoding, obfuscation, nmap, SQLi, JWT.',
+        tech: ['JS', 'Pyodide', 'Cloudflare Workers', 'KV'],
+        members: ['Scott R.'],
+        link: { label: 'ctf list', href: 'cmd:ctf list' } }
+    ];
+
+    await slow('# projects.md', 'mag', g);
+    await slowBlank(g);
+    await slow('What we\'re building, what we\'ve shipped, what we\'ve retired.', '', g);
+    await slow('Want to lead one? Mention it in <a href="' + CONFIG.links.discord + '" target="_blank" rel="noopener">Discord</a> or at any meeting.', 'dim', g);
+    await slowBlank(g);
+
+    const statusClass = { active: 'term-out-ok', shipped: 'term-out-info', archived: 'term-out-dim' };
+    const statusLabel = { active: '[ACTIVE]', shipped: '[SHIPPED]', archived: '[ARCHIVED]' };
+
+    for (const p of PROJECTS) {
+      const sc = statusClass[p.status] || 'term-out-dim';
+      const sl = statusLabel[p.status] || '[?]';
+      await slow(`<span class="${sc}">${sl}</span> <span class="term-out-warn">${escapeHtml(p.name)}</span>`, '', g);
+      await slow(`  ${escapeHtml(p.desc)}`, 'dim', g);
+      if (p.tech && p.tech.length) {
+        await slow(`  <span class="term-out-dim">tech    :</span> ${p.tech.map(t => escapeHtml(t)).join(', ')}`, '', g);
+      }
+      if (p.members && p.members.length) {
+        await slow(`  <span class="term-out-dim">members :</span> ${p.members.map(m => escapeHtml(m)).join(', ')}`, '', g);
+      }
+      if (p.link) {
+        const href = p.link.href;
+        if (href.startsWith('cmd:')) {
+          // Runs an in-terminal command (e.g. "cmd:ctf list") via the global
+          // execute() so the link actually exercises the feature it advertises.
+          const cmd = href.slice(4).replace(/'/g, "\\'");
+          await slow(`  <span class="term-out-dim">link    :</span> <a href="#" onclick="execute('${cmd}');return false;">${escapeHtml(p.link.label)}</a>`, '', g);
+        } else if (href.startsWith('#')) {
+          const tab = href.slice(1);
+          await slow(`  <span class="term-out-dim">link    :</span> <a href="#" onclick="switchTab('${tab}');return false;">${escapeHtml(p.link.label)}</a>`, '', g);
+        } else {
+          await slow(`  <span class="term-out-dim">link    :</span> <a href="${href}" target="_blank" rel="noopener">${escapeHtml(p.link.label)}</a>`, '', g);
+        }
+      }
+      await slowBlank(g);
+    }
+  }
+
   // Render a single leaderboard row inline. Shared between top-10 render and
   // the "below top 10" neighbor render so formatting stays in lockstep.
   // - rank is 1-indexed display position.
@@ -810,7 +869,7 @@ _text
 
   async function printPage(name) {
     printGen++;  // any in-flight print sees a stale gen and flushes instantly
-    const printers = { home: printHome, about: printAbout, events: printEvents, contact: printContact, lab: printLab, faq: printFaq, leaderboard: printLeaderboard };
+    const printers = { home: printHome, about: printAbout, events: printEvents, contact: printContact, lab: printLab, faq: printFaq, projects: printProjects, leaderboard: printLeaderboard };
     const fn = printers[name];
     if (!fn) return;
     // Scroll to bottom first so the typewriter effect happens in view
