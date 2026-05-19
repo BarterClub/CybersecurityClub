@@ -66,6 +66,18 @@ const DEFAULT_SITE_CONFIG = {
     { role: 'Training Officer', name: 'Miguel Torres' },
   ],
   advisor: { name: 'Malini Nagasundaram' },
+  projects: [
+    { name: 'Proxmox AD Lab', status: 'active',
+      desc: "The OIT Cybersecurity Club has been building a self-hosted training environment in a Proxmox home lab to give members realistic hands-on experience. The setup runs two Windows Server 2019 domain controllers, a domain-joined Windows 10 workstation, and a Kali Linux attacker box on an isolated VLAN — together forming a small Active Directory environment where members can practice the full attack chain from network recon through domain compromise, then turn around and study the same attacks from the defender's side. This gives the club a permanent, low-stakes playground for weekly workshops, internal CTFs, and certification prep without touching production systems.",
+      tech: ['Proxmox', 'Windows Server 2019', 'Active Directory', 'Kali Linux'],
+      members: ['Officers, and other members'],
+      link: null },
+    { name: 'Site CTF (10 challenges)', status: 'shipped',
+      desc: 'In-browser CTF covering recon, encoding, obfuscation, nmap, SQLi, JWT.',
+      tech: ['JS', 'Pyodide', 'Cloudflare Workers', 'KV'],
+      members: ['Scott R.'],
+      link: { label: 'ctf list', href: 'cmd:ctf list' } },
+  ],
   links: {
     signup:  'https://theroost.oit.edu/PMCYB/club_signup',
     roost:   'https://theroost.oit.edu/feeds?type=club&type_id=35576&tab=about',
@@ -364,6 +376,61 @@ function validateSiteConfig(input) {
     const detail = str(e.detail, 400);
     if (detail) entry.detail = detail;
     out.specialEvents.push(entry);
+  }
+
+  // Projects — list-of-objects, rendered on the projects.md tab.
+  // Each entry: { name, status, desc, tech[], members[], link? }
+  // link.href accepts external URLs, in-page tabs (#tab), or terminal
+  // commands (cmd:…). Anything else is rejected to prevent XSS via
+  // javascript: URLs and similar.
+  if (!Array.isArray(input.projects)) {
+    return { ok: false, error: 'projects must be an array' };
+  }
+  if (input.projects.length > 50) return { ok: false, error: 'too many projects' };
+  const STATUSES = ['active', 'shipped', 'archived'];
+  out.projects = [];
+  for (const [i, p] of input.projects.entries()) {
+    if (!p || typeof p !== 'object') return { ok: false, error: `projects #${i+1} invalid` };
+    const name = str(p.name, 120);
+    if (!name) return { ok: false, error: `projects #${i+1} missing name` };
+    const status = STATUSES.includes(p.status) ? p.status : 'active';
+    const desc = str(p.desc, 2000);
+    if (!desc) return { ok: false, error: `projects #${i+1} missing desc` };
+    const entry = { name, status, desc };
+
+    if (p.tech !== undefined) {
+      if (!Array.isArray(p.tech)) return { ok: false, error: `projects #${i+1} tech must be an array` };
+      if (p.tech.length > 20) return { ok: false, error: `projects #${i+1} too many tech tags` };
+      const tech = [];
+      for (const t of p.tech) {
+        const v = str(t, 60);
+        if (v && v.trim()) tech.push(v.trim());
+      }
+      if (tech.length) entry.tech = tech;
+    }
+
+    if (p.members !== undefined) {
+      if (!Array.isArray(p.members)) return { ok: false, error: `projects #${i+1} members must be an array` };
+      if (p.members.length > 20) return { ok: false, error: `projects #${i+1} too many members` };
+      const members = [];
+      for (const m of p.members) {
+        const v = str(m, 200);
+        if (v && v.trim()) members.push(v.trim());
+      }
+      if (members.length) entry.members = members;
+    }
+
+    if (p.link && typeof p.link === 'object') {
+      const label = str(p.link.label, 120);
+      const href  = str(p.link.href, 500);
+      if (label && href) {
+        const safe = /^(https?:\/\/|#|cmd:)/i.test(href);
+        if (!safe) return { ok: false, error: `projects #${i+1} link.href must start with http(s)://, #, or cmd:` };
+        entry.link = { label, href };
+      }
+    }
+
+    out.projects.push(entry);
   }
 
   // Optional announcement — a single banner shown in the public boot terminal.

@@ -116,6 +116,52 @@ function renderEvent(e) {
   return div;
 }
 
+function renderProject(p) {
+  const div = document.createElement('div');
+  div.className = 'row row-project';
+  const status = ['active', 'shipped', 'archived'].includes(p.status) ? p.status : 'active';
+  const techStr    = Array.isArray(p.tech)    ? p.tech.join(', ')    : '';
+  const membersStr = Array.isArray(p.members) ? p.members.join(', ') : '';
+  const linkLabel  = (p.link && p.link.label) || '';
+  const linkHref   = (p.link && p.link.href)  || '';
+  div.innerHTML = `
+    <div class="pr-grid-1">
+      <input class="pr-name" type="text" placeholder="Project name" maxlength="120" value="${escapeHtml(p.name || '')}">
+      <select class="pr-status">
+        <option value="active"${status === 'active' ? ' selected' : ''}>active</option>
+        <option value="shipped"${status === 'shipped' ? ' selected' : ''}>shipped</option>
+        <option value="archived"${status === 'archived' ? ' selected' : ''}>archived</option>
+      </select>
+      <button type="button" class="btn btn-small btn-danger pr-del">remove</button>
+    </div>
+    <div>
+      <div class="pr-label">description</div>
+      <textarea class="pr-desc" maxlength="2000" placeholder="A paragraph describing the project — what, why, who it's for.">${escapeHtml(p.desc || '')}</textarea>
+    </div>
+    <div class="pr-grid-2">
+      <div>
+        <div class="pr-label">tech (comma-separated)</div>
+        <input class="pr-tech" type="text" maxlength="500" placeholder="Proxmox, Wazuh, Active Directory" value="${escapeHtml(techStr)}">
+      </div>
+      <div>
+        <div class="pr-label">members (comma-separated)</div>
+        <input class="pr-members" type="text" maxlength="500" placeholder="Officers, and other members" value="${escapeHtml(membersStr)}">
+      </div>
+    </div>
+    <div class="pr-grid-3">
+      <div>
+        <div class="pr-label">link label (optional)</div>
+        <input class="pr-link-label" type="text" maxlength="120" placeholder="e.g. ctf list" value="${escapeHtml(linkLabel)}">
+      </div>
+      <div>
+        <div class="pr-label">link href (optional — https://… or #tab or cmd:…)</div>
+        <input class="pr-link-href" type="text" maxlength="500" placeholder="cmd:ctf list" value="${escapeHtml(linkHref)}">
+      </div>
+    </div>`;
+  div.querySelector('.pr-del').addEventListener('click', () => div.remove());
+  return div;
+}
+
 function populateForm(cfg) {
   currentConfig = cfg;
 
@@ -143,6 +189,10 @@ function populateForm(cfg) {
   evList.innerHTML = '';
   (cfg.specialEvents || []).forEach(e => evList.appendChild(renderEvent(e)));
 
+  const prList = $('projects-list');
+  prList.innerHTML = '';
+  (cfg.projects || []).forEach(p => prList.appendChild(renderProject(p)));
+
   const a = cfg.announcement || {};
   $('f-announce-message').value  = a.message  || '';
   $('f-announce-expires').value  = a.expires  || '';
@@ -169,6 +219,27 @@ function collectForm() {
     const entry = { date, title };
     if (detail) entry.detail = detail;
     specialEvents.push(entry);
+  });
+
+  // Projects — tech / members are comma-split; link is null unless both
+  // label and href are present. Validation (incl. href scheme allow-list)
+  // happens server-side; here we just trim and shape.
+  const splitCSV = (s) => s.split(',').map(t => t.trim()).filter(Boolean);
+  const projects = [];
+  document.querySelectorAll('#projects-list .row-project').forEach(row => {
+    const name   = row.querySelector('.pr-name').value.trim();
+    const status = row.querySelector('.pr-status').value;
+    const desc   = row.querySelector('.pr-desc').value.trim();
+    if (!name && !desc) return;
+    const entry = { name, status, desc };
+    const tech    = splitCSV(row.querySelector('.pr-tech').value);
+    const members = splitCSV(row.querySelector('.pr-members').value);
+    if (tech.length)    entry.tech = tech;
+    if (members.length) entry.members = members;
+    const label = row.querySelector('.pr-link-label').value.trim();
+    const href  = row.querySelector('.pr-link-href').value.trim();
+    if (label && href) entry.link = { label, href };
+    projects.push(entry);
   });
 
   const announceMessage = $('f-announce-message').value.trim();
@@ -200,6 +271,7 @@ function collectForm() {
       discord: $('f-link-discord').value.trim(),
     },
     specialEvents,
+    projects,
     announcement,
   };
 }
@@ -351,6 +423,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
   $('add-event').addEventListener('click', () => {
     $('events-list').appendChild(renderEvent({}));
+  });
+  $('add-project').addEventListener('click', () => {
+    $('projects-list').appendChild(renderProject({}));
   });
   $('save').addEventListener('click', saveConfig);
   $('reload').addEventListener('click', loadConfig);

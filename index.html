@@ -54,6 +54,25 @@
     ],
     advisor: { name: 'Malini Nagasundaram' },
 
+    // --- Projects ---
+    // Rendered on the `projects.md` tab. Edited via /admin. Each entry:
+    //   { name, status: 'active'|'shipped'|'archived', desc,
+    //     tech: ['t1', ...], members: ['m1', ...], link: { label, href } | null }
+    // `link.href` accepts: an external URL (https://…), an in-page tab (#home),
+    // or a terminal command (cmd:ctf list) that fires execute() on click.
+    projects: [
+      { name: 'Proxmox AD Lab', status: 'active',
+        desc: "The OIT Cybersecurity Club has been building a self-hosted training environment in a Proxmox home lab to give members realistic hands-on experience. The setup runs two Windows Server 2019 domain controllers, a domain-joined Windows 10 workstation, and a Kali Linux attacker box on an isolated VLAN — together forming a small Active Directory environment where members can practice the full attack chain from network recon through domain compromise, then turn around and study the same attacks from the defender's side. This gives the club a permanent, low-stakes playground for weekly workshops, internal CTFs, and certification prep without touching production systems.",
+        tech: ['Proxmox', 'Windows Server 2019', 'Active Directory', 'Kali Linux'],
+        members: ['Officers, and other members'],
+        link: null },
+      { name: 'Site CTF (10 challenges)', status: 'shipped',
+        desc: 'In-browser CTF covering recon, encoding, obfuscation, nmap, SQLi, JWT.',
+        tech: ['JS', 'Pyodide', 'Cloudflare Workers', 'KV'],
+        members: ['Scott R.'],
+        link: { label: 'ctf list', href: 'cmd:ctf list' } },
+    ],
+
     // --- External links ---
     links: {
       signup:  'https://theroost.oit.edu/PMCYB/club_signup',

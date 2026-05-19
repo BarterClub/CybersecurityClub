@@ -729,26 +729,15 @@ _text
     await slow(`  • Help each other out in <a href="${CONFIG.links.discord}" target="_blank" rel="noopener">Discord</a> #ctf channel; brag when you root the DC`, '', g);
   }
 
-  // PREVIEW: sample projects.md tab. Inline data for now — if we keep this tab,
-  // promote `PROJECTS` to CONFIG.projects + admin-console editor (see CLAUDE.md
-  // "Adding a new editable field"). Status pill colors:
+  // projects.md tab — list comes from CONFIG.projects (admin-editable via /admin).
+  // Inline defaults in index.html serve as the fallback if KV / the remote
+  // config is unreachable. Status pill colors:
   //   active   → ok    (green)
   //   shipped  → info  (blue)
   //   archived → dim
   async function printProjects() {
     const g = printGen;
-    const PROJECTS = [
-      { name: 'Proxmox AD Lab', status: 'active',
-        desc: 'The OIT Cybersecurity Club has been building a self-hosted training environment in a Proxmox home lab to give members realistic hands-on experience. The setup runs two Windows Server 2019 domain controllers, a domain-joined Windows 10 workstation, and a Kali Linux attacker box on an isolated VLAN — together forming a small Active Directory environment where members can practice the full attack chain from network recon through domain compromise, then turn around and study the same attacks from the defender\'s side. This gives the club a permanent, low-stakes playground for weekly workshops, internal CTFs, and certification prep without touching production systems.',
-        tech: ['Proxmox', 'Windows Server 2019', 'Active Directory', 'Kali Linux'],
-        members: ['Officers, and other members'],
-        link: null },
-      { name: 'Site CTF (10 challenges)', status: 'shipped',
-        desc: 'In-browser CTF covering recon, encoding, obfuscation, nmap, SQLi, JWT.',
-        tech: ['JS', 'Pyodide', 'Cloudflare Workers', 'KV'],
-        members: ['Scott R.'],
-        link: { label: 'ctf list', href: 'cmd:ctf list' } }
-    ];
+    const projects = Array.isArray(CONFIG.projects) ? CONFIG.projects : [];
 
     await slow('# projects.md', 'mag', g);
     await slowBlank(g);
@@ -756,10 +745,15 @@ _text
     await slow('Want to lead one? Mention it in <a href="' + CONFIG.links.discord + '" target="_blank" rel="noopener">Discord</a> or at any meeting.', 'dim', g);
     await slowBlank(g);
 
+    if (!projects.length) {
+      await slow('  <span class="term-out-dim">(no projects yet — check back soon)</span>', '', g);
+      return;
+    }
+
     const statusClass = { active: 'term-out-ok', shipped: 'term-out-info', archived: 'term-out-dim' };
     const statusLabel = { active: '[ACTIVE]', shipped: '[SHIPPED]', archived: '[ARCHIVED]' };
 
-    for (const p of PROJECTS) {
+    for (const p of projects) {
       const sc = statusClass[p.status] || 'term-out-dim';
       const sl = statusLabel[p.status] || '[?]';
       await slow(`<span class="${sc}">${sl}</span> <span class="term-out-warn">${escapeHtml(p.name)}</span>`, '', g);
@@ -2057,7 +2051,7 @@ ${bot}
     'clubName', 'campusName', 'founded', 'description',
     'meetingDay', 'meetingTime', 'meetingRoom',
     'members', 'specialEvents', 'officers', 'advisor', 'links',
-    'announcement',
+    'projects', 'announcement',
   ];
   function mergeRemoteConfig(remote) {
     if (!remote || typeof remote !== 'object') return;
