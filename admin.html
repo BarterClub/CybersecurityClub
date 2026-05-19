@@ -75,8 +75,15 @@
   .row-officer  { grid-template-columns: 1fr 1fr auto auto; }
   .row-event    { grid-template-columns: 130px 1fr 1.5fr auto; }
   .row-lb       { grid-template-columns: 1fr 80px 100px 80px auto; }
+  .row-project  { grid-template-columns: 1fr; gap: 6px; }
+  .row-project .pr-grid-1 { display: grid; grid-template-columns: 1fr 120px auto; gap: 6px; align-items: center; }
+  .row-project .pr-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .row-project .pr-grid-3 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .row-project textarea  { font: inherit; font-size: 12px; padding: 4px 6px; background: var(--bg-1); color: var(--text); border: 1px solid var(--border); resize: vertical; min-height: 60px; width: 100%; box-sizing: border-box; }
+  .row-project .pr-label { font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: .5px; }
   @media (max-width: 700px) {
     .row-officer, .row-event, .row-lb { grid-template-columns: 1fr; }
+    .row-project .pr-grid-1, .row-project .pr-grid-2, .row-project .pr-grid-3 { grid-template-columns: 1fr; }
   }
   .row input { font-size: 12px; padding: 4px 6px; }
   .row-actions { display: flex; gap: 4px; justify-content: flex-end; }
@@ -297,6 +304,14 @@
     <p class="note">Overrides a weekly meeting on a specific date (e.g. CTF night, guest speaker). Past dates auto-hide on the public events page. <code>detail</code> is optional — falls back to standard time + room.</p>
     <div id="events-list" class="row-table"></div>
     <button class="btn btn-small" id="add-event" type="button" style="margin-top: 8px;">+ add event</button>
+  </section>
+
+  <!-- PROJECTS -->
+  <section class="panel">
+    <h2>projects</h2>
+    <p class="note">Rendered on the <code>projects.md</code> tab. <code>tech</code> and <code>members</code> are comma-separated. <code>link href</code> accepts an external URL (<code>https://…</code>), an in-page tab (<code>#home</code>), or a terminal command (<code>cmd:ctf list</code>) — leave both link fields blank to omit.</p>
+    <div id="projects-list" class="row-table"></div>
+    <button class="btn btn-small" id="add-project" type="button" style="margin-top: 8px;">+ add project</button>
   </section>
 
   <!-- FOOTER: SAVE -->
