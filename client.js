@@ -12,9 +12,9 @@
   /* ============================================================
      ANIMATED STATS (simulated)
      ============================================================ */
-  function jitter(b, r) { return Math.max(0, Math.min(100, b + (Math.random()-0.5)*r)); }
+  function jitter(base, range) { return Math.max(0, Math.min(100, base + (Math.random()-0.5)*range)); }
   // Like jitter() but without the 0..100 clamp — for values that aren't percentages (e.g. network KB/s).
-  function jitterFree(b, r) { return Math.max(0, b + (Math.random()-0.5)*r); }
+  function jitterFree(base, range) { return Math.max(0, base + (Math.random()-0.5)*range); }
   // Rolling buffer for the network-in sparkline (most recent N samples)
   const NET_IN_HISTORY = [];
   const NET_IN_MAX_POINTS = 40;
@@ -121,34 +121,34 @@
      doesn't spoil them. Determined players will still find them —
      that's the point of a CTF. Replace these with your own.
      ============================================================ */
-  function fnv1a(s) {
-    let h = 0x811c9dc5;
-    for (let i = 0; i < s.length; i++) {
-      h ^= s.charCodeAt(i);
-      h = (h + ((h<<1) + (h<<4) + (h<<7) + (h<<8) + (h<<24))) >>> 0;
+  function fnv1a(str) {
+    let hash = 0x811c9dc5;
+    for (let i = 0; i < str.length; i++) {
+      hash ^= str.charCodeAt(i);
+      hash = (hash + ((hash<<1) + (hash<<4) + (hash<<7) + (hash<<8) + (hash<<24))) >>> 0;
     }
-    return h.toString(16).padStart(8, '0');
+    return hash.toString(16).padStart(8, '0');
   }
 
   /* ============================================================
      JWT helpers — used by CTF #10 (jwt_tamper) commands.
      base64url is base64 with `+/` → `-_` and stripped padding.
-     _hmacFake stands in for an HMAC-SHA256 — the real point of the
+     hmacFake stands in for an HMAC-SHA256 — the real point of the
      challenge isn't cracking the secret, it's exploiting alg=none
      in the verifier (`whoami-jwt` accepts unsigned tokens).
      ============================================================ */
-  function _b64urlEncode(str) {
+  function b64urlEncode(str) {
     return btoa(unescape(encodeURIComponent(str)))
       .replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_');
   }
-  function _b64urlDecode(s) {
-    s = String(s || '').replace(/-/g, '+').replace(/_/g, '/');
-    while (s.length % 4) s += '=';
-    try { return decodeURIComponent(escape(atob(s))); }
-    catch (_) { return atob(s); }
+  function b64urlDecode(input) {
+    let str = String(input || '').replace(/-/g, '+').replace(/_/g, '/');
+    while (str.length % 4) str += '=';
+    try { return decodeURIComponent(escape(atob(str))); }
+    catch (_) { return atob(str); }
   }
-  function _hmacFake(h, p) {
-    return fnv1a(h + '.' + p + '|oit-cybersec-secret');
+  function hmacFake(encodedHeader, encodedPayload) {
+    return fnv1a(encodedHeader + '.' + encodedPayload + '|oit-cybersec-secret');
   }
 
   // NOTE: hashes are PRECOMPUTED with fnv1a() and pasted in as hex strings.
@@ -315,15 +315,15 @@
     if (ctfState.solved.size < 1) return;
     const solvedIds = Array.from(ctfState.solved).sort((a, b) => a - b);
     try {
-      const r = await fetch('/api/submit-score', {
+      const response = await fetch('/api/submit-score', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: ctfTimer.submittedAs, solvedIds, elapsedMs: elapsedMs() }),
       });
-      const d = await r.json().catch(() => null);
-      if (d && d.ok) {
-        ctfTimer.lastRankCurrent = d.rankCurrent;
-        ctfTimer.lastRankAllTime = d.rankAllTime;
+      const data = await response.json().catch(() => null);
+      if (data && data.ok) {
+        ctfTimer.lastRankCurrent = data.rankCurrent;
+        ctfTimer.lastRankAllTime = data.rankAllTime;
         saveTimer();
       }
     } catch (_) { /* offline / no Worker — ignore */ }
@@ -364,8 +364,8 @@
   const termInput  = document.getElementById('term-input');
   const termPath   = document.getElementById('term-path');
 
-  function escapeHtml(s) {
-    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  function escapeHtml(str) {
+    return String(str).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
   }
   function out(html, cls = '') {
     const div = document.createElement('div');
@@ -482,32 +482,32 @@ _text
   const REDUCED_MOTION = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const LINE_DELAY = REDUCED_MOTION ? 0 : 55;  // ms between printed lines
   let printGen = 0;       // incremented on each new printPage; lets in-flight prints finish fast if the user clicks again
-  function _sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+  function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
   async function slow(html, cls = '', myGen = printGen) {
     out(html, cls);
     if (myGen !== printGen) return;  // a newer print has started — flush instantly
-    await _sleep(LINE_DELAY);
+    await sleep(LINE_DELAY);
   }
   async function slowBlank(myGen = printGen) {
     blank();
     if (myGen !== printGen) return;
-    await _sleep(LINE_DELAY);
+    await sleep(LINE_DELAY);
   }
 
   // Emit a "<N> flags captured globally" line when the live counter is known.
   // No-op if the /api/stats fetch hasn't resolved yet, or if the API failed
   // (so the line silently doesn't appear in local previews / offline).
   async function slowSolveCount(myGen = printGen) {
-    if (typeof _bootSolvesValue !== 'number' || !isFinite(_bootSolvesValue)) return;
+    if (typeof bootSolvesValue !== 'number' || !isFinite(bootSolvesValue)) return;
     await slow(
-      `<span class="term-out-info">${_bootSolvesValue.toLocaleString()}</span> flags captured across all sessions.`,
+      `<span class="term-out-info">${bootSolvesValue.toLocaleString()}</span> flags captured across all sessions.`,
       'dim', myGen
     );
     await slowBlank(myGen);
   }
 
   async function printHome() {
-    const g = printGen;
+    const myGen = printGen;
     // On first load, the ASCII art is already rendered statically in the HTML
     // as #boot-splash — see the comment in index.html for the LCP rationale.
     // Claim it by stripping the id so subsequent printHome calls (banner
@@ -524,48 +524,48 @@ _text
 ╚██████╗   ██║   ██████╔╝███████╗██║  ██║███████║███████╗╚██████╗
  ╚═════╝   ╚═╝   ╚═════╝ ╚══════╝╚═╝  ╚═╝╚══════╝╚══════╝ ╚═════╝
               ${CONFIG.campusName} · Hustlin' Owls
-</pre>`, '', g);
+</pre>`, '', myGen);
     }
-    await slow(`<span class="term-out-ok">$</span> Welcome to the ${CONFIG.clubName} Terminal v1.0.0`, '', g);
-    await slow(`${CONFIG.campusName} · ${CONFIG.description}`, 'dim', g);
-    await slowBlank(g);
+    await slow(`<span class="term-out-ok">$</span> Welcome to the ${CONFIG.clubName} Terminal v1.0.0`, '', myGen);
+    await slow(`${CONFIG.campusName} · ${CONFIG.description}`, 'dim', myGen);
+    await slowBlank(myGen);
     // Solve count omitted here — already shown in the boot animation's [INFO] line.
     // It's still printed on the CTF tab (printCtf) where the context is relevant.
-    await slow('Type <span class="term-out-ok">help</span> for commands. Type <span class="term-out-mag">ctf</span> to start solving challenges.', 'dim', g);
-    await slow('New here? Type <span class="term-out-ok">about</span> for how to get started.', 'dim', g);
+    await slow('Type <span class="term-out-ok">help</span> for commands. Type <span class="term-out-mag">ctf</span> to start solving challenges.', 'dim', myGen);
+    await slow('New here? Type <span class="term-out-ok">about</span> for how to get started.', 'dim', myGen);
     // Nudge anyone who's solved anything but hasn't joined the leaderboard.
     // Lowered from "all 10" to "1+" since the leaderboard is now rolling —
     // partial-progress entries are valid and update live as you continue.
     if (ctfState.solved.size >= 1 && (!ctfTimer || (!ctfTimer.submittedAs && !ctfTimer.skipped))) {
-      await slowBlank(g);
-      await slow(`<span class="term-out-mag">★ You've solved ${ctfState.solved.size}/${CHALLENGES.length} challenges.</span> Run <span class="term-out-ok">submit</span> to join the leaderboard — your row updates live as you solve more.`, '', g);
+      await slowBlank(myGen);
+      await slow(`<span class="term-out-mag">★ You've solved ${ctfState.solved.size}/${CHALLENGES.length} challenges.</span> Run <span class="term-out-ok">submit</span> to join the leaderboard — your row updates live as you solve more.`, '', myGen);
     }
   }
 
   async function printAbout() {
-    const g = printGen;
-    await slow('# about.md', 'mag', g);
-    await slowBlank(g);
-    await slow(`The <span class="term-out-ok">${CONFIG.clubName}</span> is a student-run cybersecurity / hacking / CTF club at ${CONFIG.campusName}. We meet ${CONFIG.meetingDay}s at ${CONFIG.meetingTime} in ${CONFIG.meetingRoom} to break things, learn new tools, and prep for CTF competitions.`, '', g);
-    await slowBlank(g);
-    await slow('Areas of focus:', 'dim', g);
-    await slow('  <span class="term-out-ok">▸</span> Network &amp; web exploitation (nmap, Burp, sqlmap, Metasploit)', '', g);
-    await slow('  <span class="term-out-ok">▸</span> Hardware &amp; wireless security (Pwnagotchi, Flipper, Bash Bunny, Alfa cards)', '', g);
-    await slow('  <span class="term-out-ok">▸</span> Reverse engineering &amp; binary exploitation (Ghidra, pwntools, ROP)', '', g);
-    await slow('  <span class="term-out-ok">▸</span> Defensive ops &amp; SIEM (Splunk, Wazuh, network forensics)', '', g);
-    await slow('  <span class="term-out-ok">▸</span> CTF preparation — internal practice + external competitions', '', g);
-    await slowBlank(g);
-    await slow('<span class="term-out-mag">## How to get started</span>', '', g);
-    await slowBlank(g);
-    await slow("It's two things:", '', g);
-    await slow(`  <span class="term-out-warn">1.</span> <a href="${CONFIG.links.signup}" target="_blank" rel="noopener">Sign up on The Roost</a> — that's the only formal step.`, '', g);
-    await slow("  <span class=\"term-out-warn\">2.</span> Show up to meetings you can make. We won't take attendance.", '', g);
-    await slowBlank(g);
-    await slow('Two kinds of meetings:', 'dim', g);
-    await slow(`  <span class="term-out-ok">▸</span> <span class="term-out-info">Weekly labs</span> — every ${CONFIG.meetingDay}, ${CONFIG.meetingTime}, ${CONFIG.meetingRoom}. Hands-on practice on whatever we're working on that week.`, '', g);
-    await slow(`  <span class="term-out-ok">▸</span> <span class="term-out-info">Term highlights</span> — bigger events at quarter end (CTFs, guest speakers, showcases). See the <a href="#" onclick="switchTab('events');return false;">events page</a> for what's coming up.`, '', g);
-    await slowBlank(g);
-    await slow("Can't make every Thursday? Come to whatever you can. No prior experience required. Bring a laptop. Curiosity is mandatory. Membership is free.", '', g);
+    const myGen = printGen;
+    await slow('# about.md', 'mag', myGen);
+    await slowBlank(myGen);
+    await slow(`The <span class="term-out-ok">${CONFIG.clubName}</span> is a student-run cybersecurity / hacking / CTF club at ${CONFIG.campusName}. We meet ${CONFIG.meetingDay}s at ${CONFIG.meetingTime} in ${CONFIG.meetingRoom} to break things, learn new tools, and prep for CTF competitions.`, '', myGen);
+    await slowBlank(myGen);
+    await slow('Areas of focus:', 'dim', myGen);
+    await slow('  <span class="term-out-ok">▸</span> Network &amp; web exploitation (nmap, Burp, sqlmap, Metasploit)', '', myGen);
+    await slow('  <span class="term-out-ok">▸</span> Hardware &amp; wireless security (Pwnagotchi, Flipper, Bash Bunny, Alfa cards)', '', myGen);
+    await slow('  <span class="term-out-ok">▸</span> Reverse engineering &amp; binary exploitation (Ghidra, pwntools, ROP)', '', myGen);
+    await slow('  <span class="term-out-ok">▸</span> Defensive ops &amp; SIEM (Splunk, Wazuh, network forensics)', '', myGen);
+    await slow('  <span class="term-out-ok">▸</span> CTF preparation — internal practice + external competitions', '', myGen);
+    await slowBlank(myGen);
+    await slow('<span class="term-out-mag">## How to get started</span>', '', myGen);
+    await slowBlank(myGen);
+    await slow("It's two things:", '', myGen);
+    await slow(`  <span class="term-out-warn">1.</span> <a href="${CONFIG.links.signup}" target="_blank" rel="noopener">Sign up on The Roost</a> — that's the only formal step.`, '', myGen);
+    await slow("  <span class=\"term-out-warn\">2.</span> Show up to meetings you can make. We won't take attendance.", '', myGen);
+    await slowBlank(myGen);
+    await slow('Two kinds of meetings:', 'dim', myGen);
+    await slow(`  <span class="term-out-ok">▸</span> <span class="term-out-info">Weekly labs</span> — every ${CONFIG.meetingDay}, ${CONFIG.meetingTime}, ${CONFIG.meetingRoom}. Hands-on practice on whatever we're working on that week.`, '', myGen);
+    await slow(`  <span class="term-out-ok">▸</span> <span class="term-out-info">Term highlights</span> — bigger events at quarter end (CTFs, guest speakers, showcases). See the <a href="#" onclick="switchTab('events');return false;">events page</a> for what's coming up.`, '', myGen);
+    await slowBlank(myGen);
+    await slow("Can't make every Thursday? Come to whatever you can. No prior experience required. Bring a laptop. Curiosity is mandatory. Membership is free.", '', myGen);
   }
 
   /* ============================================================
@@ -575,158 +575,158 @@ _text
   const MONTHS_NICE  = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const DAY_NUMS = { Sunday:0, Monday:1, Tuesday:2, Wednesday:3, Thursday:4, Friday:5, Saturday:6 };
   function upcomingThursdays(count) {
-    const out = [];
+    const results = [];
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const target = DAY_NUMS[CONFIG.meetingDay] ?? 4;
-    const daysUntil = (target - today.getDay() + 7) % 7;
-    const first = new Date(today);
-    first.setDate(today.getDate() + daysUntil);
+    const targetDayNum = DAY_NUMS[CONFIG.meetingDay] ?? 4;
+    const daysUntil = (targetDayNum - today.getDay() + 7) % 7;
+    const firstMeeting = new Date(today);
+    firstMeeting.setDate(today.getDate() + daysUntil);
     for (let i = 0; i < count; i++) {
-      const d = new Date(first);
-      d.setDate(first.getDate() + i * 7);
-      out.push(d);
+      const meeting = new Date(firstMeeting);
+      meeting.setDate(firstMeeting.getDate() + i * 7);
+      results.push(meeting);
     }
-    return out;
+    return results;
   }
-  const _DAY_ABBR = (n) => ['SUN','MON','TUE','WED','THU','FRI','SAT'][n];
-  const _Day      = (n) => ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][n];
-  function fmtEventCard(d) { return `${_DAY_ABBR(d.getDay())} ${MONTHS_SHORT[d.getMonth()]} ${String(d.getDate()).padStart(2)}`; }
-  function fmtNextMeeting(d) { return `${_Day(d.getDay())} ${MONTHS_NICE[d.getMonth()]} ${d.getDate()} · ${CONFIG.meetingTime}`; }
+  const dayAbbrUpper = (dayIndex) => ['SUN','MON','TUE','WED','THU','FRI','SAT'][dayIndex];
+  const dayAbbrTitle = (dayIndex) => ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][dayIndex];
+  function fmtEventCard(date) { return `${dayAbbrUpper(date.getDay())} ${MONTHS_SHORT[date.getMonth()]} ${String(date.getDate()).padStart(2)}`; }
+  function fmtNextMeeting(date) { return `${dayAbbrTitle(date.getDay())} ${MONTHS_NICE[date.getMonth()]} ${date.getDate()} · ${CONFIG.meetingTime}`; }
 
   // Format a Date as ISO `YYYY-MM-DD` for matching against CONFIG.specialEvents
-  function isoDate(d) {
-    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  function isoDate(date) {
+    return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
   }
 
   async function printEvents() {
-    const g = printGen;
-    await slow(`# events.json — every ${CONFIG.meetingDay} at ${CONFIG.meetingTime}, ${CONFIG.meetingRoom}`, 'mag', g);
-    await slowBlank(g);
+    const myGen = printGen;
+    await slow(`# events.json — every ${CONFIG.meetingDay} at ${CONFIG.meetingTime}, ${CONFIG.meetingRoom}`, 'mag', myGen);
+    await slowBlank(myGen);
     for (const d of upcomingThursdays(5)) {
       const special = (CONFIG.specialEvents || []).find(e => e.date === isoDate(d));
       const title      = special ? special.title : 'Weekly meeting';
       const titleClass = special ? 'mag'         : 'info';
       const detail     = (special && special.detail) || `${CONFIG.meetingTime} · ${CONFIG.meetingRoom}`;
-      await slow(`  <span class="term-out-warn">${fmtEventCard(d)}</span>  <span class="term-out-${titleClass}">${title}</span>  <span class="term-out-dim">· ${detail}</span>`, '', g);
+      await slow(`  <span class="term-out-warn">${fmtEventCard(d)}</span>  <span class="term-out-${titleClass}">${title}</span>  <span class="term-out-dim">· ${detail}</span>`, '', myGen);
     }
   }
 
   async function printContact() {
-    const g = printGen;
-    await slow('# contact.sh', 'mag', g);
-    await slowBlank(g);
-    await slow('Reach out — for joining, questions, or anything else.', '', g);
-    await slowBlank(g);
-    await slow(`  <span class="term-out-dim">sign up    :</span> <a href="${CONFIG.links.signup}" target="_blank">${_u(CONFIG.links.signup)}</a>`, '', g);
-    await slow(`  <span class="term-out-dim">the roost  :</span> <a href="${CONFIG.links.roost}" target="_blank">club page</a>`, '', g);
-    await slow(`  <span class="term-out-dim">discord    :</span> <a href="${CONFIG.links.discord}" target="_blank">${_u(CONFIG.links.discord)}</a>`, '', g);
-    await slow(`  <span class="term-out-dim">advisor    :</span> ${CONFIG.advisor.name}`, '', g);
-    await slowBlank(g);
-    await slow('# officers.list', 'mag', g);
+    const myGen = printGen;
+    await slow('# contact.sh', 'mag', myGen);
+    await slowBlank(myGen);
+    await slow('Reach out — for joining, questions, or anything else.', '', myGen);
+    await slowBlank(myGen);
+    await slow(`  <span class="term-out-dim">sign up    :</span> <a href="${CONFIG.links.signup}" target="_blank">${_u(CONFIG.links.signup)}</a>`, '', myGen);
+    await slow(`  <span class="term-out-dim">the roost  :</span> <a href="${CONFIG.links.roost}" target="_blank">club page</a>`, '', myGen);
+    await slow(`  <span class="term-out-dim">discord    :</span> <a href="${CONFIG.links.discord}" target="_blank">${_u(CONFIG.links.discord)}</a>`, '', myGen);
+    await slow(`  <span class="term-out-dim">advisor    :</span> ${CONFIG.advisor.name}`, '', myGen);
+    await slowBlank(myGen);
+    await slow('# officers.list', 'mag', myGen);
     const padW = Math.max(...CONFIG.officers.map(o => o.role.length));
     for (const o of CONFIG.officers) {
-      await slow(`  <span class="term-out-dim">${o.role.toLowerCase().padEnd(padW)}:</span> ${o.name}`, '', g);
+      await slow(`  <span class="term-out-dim">${o.role.toLowerCase().padEnd(padW)}:</span> ${o.name}`, '', myGen);
     }
   }
 
   async function printFaq() {
-    const g = printGen;
-    await slow('# faq.md', 'mag', g);
-    await slowBlank(g);
-    await slow('Common questions, kept short. The terminal <span class="term-out-ok">help</span> command is the strict reference.', 'dim', g);
-    await slowBlank(g);
+    const myGen = printGen;
+    await slow('# faq.md', 'mag', myGen);
+    await slowBlank(myGen);
+    await slow('Common questions, kept short. The terminal <span class="term-out-ok">help</span> command is the strict reference.', 'dim', myGen);
+    await slowBlank(myGen);
 
     // --- About the club ---
-    await slow('<span class="term-out-warn">## About the club</span>', '', g);
-    await slowBlank(g);
-    await slow('<span class="term-out-mag">Q:</span> Do I need experience?', '', g);
-    await slow('<span class="term-out-info">A:</span> No. Bring curiosity. We start from wherever you are.', 'dim', g);
-    await slowBlank(g);
-    await slow('<span class="term-out-mag">Q:</span> Do I need to be a CS major?', '', g);
-    await slow('<span class="term-out-info">A:</span> No — open to anyone interested in security.', 'dim', g);
-    await slowBlank(g);
-    await slow('<span class="term-out-mag">Q:</span> How do I join?', '', g);
-    await slow(`<span class="term-out-info">A:</span> <a href="${CONFIG.links.signup}" target="_blank" rel="noopener">Sign up on The Roost</a> and show up to whatever meetings you can.`, 'dim', g);
-    await slowBlank(g);
-    await slow('<span class="term-out-mag">Q:</span> What if I can\'t make every meeting?', '', g);
-    await slow('<span class="term-out-info">A:</span> Come to what you can. We don\'t take attendance.', 'dim', g);
-    await slowBlank(g);
+    await slow('<span class="term-out-warn">## About the club</span>', '', myGen);
+    await slowBlank(myGen);
+    await slow('<span class="term-out-mag">Q:</span> Do I need experience?', '', myGen);
+    await slow('<span class="term-out-info">A:</span> No. Bring curiosity. We start from wherever you are.', 'dim', myGen);
+    await slowBlank(myGen);
+    await slow('<span class="term-out-mag">Q:</span> Do I need to be a CS major?', '', myGen);
+    await slow('<span class="term-out-info">A:</span> No — open to anyone interested in security.', 'dim', myGen);
+    await slowBlank(myGen);
+    await slow('<span class="term-out-mag">Q:</span> How do I join?', '', myGen);
+    await slow(`<span class="term-out-info">A:</span> <a href="${CONFIG.links.signup}" target="_blank" rel="noopener">Sign up on The Roost</a> and show up to whatever meetings you can.`, 'dim', myGen);
+    await slowBlank(myGen);
+    await slow('<span class="term-out-mag">Q:</span> What if I can\'t make every meeting?', '', myGen);
+    await slow('<span class="term-out-info">A:</span> Come to what you can. We don\'t take attendance.', 'dim', myGen);
+    await slowBlank(myGen);
 
     // --- About the CTF ---
-    await slow('<span class="term-out-warn">## About the CTF</span>', '', g);
-    await slowBlank(g);
-    await slow('<span class="term-out-mag">Q:</span> What is a CTF?', '', g);
-    await slow('<span class="term-out-info">A:</span> Capture The Flag. Solve security puzzles, capture flag strings (<span class="term-out-mag">flag{...}</span>), score points.', 'dim', g);
-    await slowBlank(g);
-    await slow('<span class="term-out-mag">Q:</span> How do I play this site\'s CTF?', '', g);
-    await slow('<span class="term-out-info">A:</span> Run <span class="term-out-ok">ctf list</span> for the 10 challenges, <span class="term-out-ok">ctf start &lt;n&gt;</span> to open one, <span class="term-out-ok">flag &lt;text&gt;</span> to submit.', 'dim', g);
-    await slowBlank(g);
-    await slow('<span class="term-out-mag">Q:</span> I\'m stuck.', '', g);
-    await slow(`<span class="term-out-info">A:</span> Run <span class="term-out-ok">hint &lt;n&gt;</span> for a nudge. Or ask in <a href="${CONFIG.links.discord}" target="_blank" rel="noopener">Discord</a> — no shame.`, 'dim', g);
-    await slowBlank(g);
-    await slow('<span class="term-out-mag">Q:</span> Can I try again for a better score?', '', g);
-    await slow('<span class="term-out-info">A:</span> Yes. <span class="term-out-ok">ctf retry</span> clears your solves but keeps your leaderboard name — the new run only replaces your entry if it beats your old score.', 'dim', g);
-    await slowBlank(g);
-    await slow('<span class="term-out-mag">Q:</span> How does the leaderboard rank?', '', g);
-    await slow('<span class="term-out-info">A:</span> Points first (more = higher). Ties broken by faster time. Updates live as you solve.', 'dim', g);
-    await slowBlank(g);
-    await slow('<span class="term-out-mag">Q:</span> When does the leaderboard reset?', '', g);
-    await slow('<span class="term-out-info">A:</span> "This term" resets at the start of each OIT quarter (auto). "All time" never resets.', 'dim', g);
-    await slowBlank(g);
+    await slow('<span class="term-out-warn">## About the CTF</span>', '', myGen);
+    await slowBlank(myGen);
+    await slow('<span class="term-out-mag">Q:</span> What is a CTF?', '', myGen);
+    await slow('<span class="term-out-info">A:</span> Capture The Flag. Solve security puzzles, capture flag strings (<span class="term-out-mag">flag{...}</span>), score points.', 'dim', myGen);
+    await slowBlank(myGen);
+    await slow('<span class="term-out-mag">Q:</span> How do I play this site\'s CTF?', '', myGen);
+    await slow('<span class="term-out-info">A:</span> Run <span class="term-out-ok">ctf list</span> for the 10 challenges, <span class="term-out-ok">ctf start &lt;n&gt;</span> to open one, <span class="term-out-ok">flag &lt;text&gt;</span> to submit.', 'dim', myGen);
+    await slowBlank(myGen);
+    await slow('<span class="term-out-mag">Q:</span> I\'m stuck.', '', myGen);
+    await slow(`<span class="term-out-info">A:</span> Run <span class="term-out-ok">hint &lt;n&gt;</span> for a nudge. Or ask in <a href="${CONFIG.links.discord}" target="_blank" rel="noopener">Discord</a> — no shame.`, 'dim', myGen);
+    await slowBlank(myGen);
+    await slow('<span class="term-out-mag">Q:</span> Can I try again for a better score?', '', myGen);
+    await slow('<span class="term-out-info">A:</span> Yes. <span class="term-out-ok">ctf retry</span> clears your solves but keeps your leaderboard name — the new run only replaces your entry if it beats your old score.', 'dim', myGen);
+    await slowBlank(myGen);
+    await slow('<span class="term-out-mag">Q:</span> How does the leaderboard rank?', '', myGen);
+    await slow('<span class="term-out-info">A:</span> Points first (more = higher). Ties broken by faster time. Updates live as you solve.', 'dim', myGen);
+    await slowBlank(myGen);
+    await slow('<span class="term-out-mag">Q:</span> When does the leaderboard reset?', '', myGen);
+    await slow('<span class="term-out-info">A:</span> "This term" resets at the start of each OIT quarter (auto). "All time" never resets.', 'dim', myGen);
+    await slowBlank(myGen);
 
     // --- About the site ---
-    await slow('<span class="term-out-warn">## About the site</span>', '', g);
-    await slowBlank(g);
-    await slow('<span class="term-out-mag">Q:</span> How do I use this thing?', '', g);
-    await slow('<span class="term-out-info">A:</span> Type commands at the prompt. <span class="term-out-ok">help</span> lists them. Tab completes. ↑/↓ scrolls history. Ctrl+L clears.', 'dim', g);
-    await slowBlank(g);
-    await slow('<span class="term-out-mag">Q:</span> Found a bug?', '', g);
-    await slow(`<span class="term-out-info">A:</span> Drop it in <a href="${CONFIG.links.discord}" target="_blank" rel="noopener">Discord</a>, or email any officer (see <a href="#" onclick="switchTab('contact');return false;">contact.sh</a>).`, 'dim', g);
+    await slow('<span class="term-out-warn">## About the site</span>', '', myGen);
+    await slowBlank(myGen);
+    await slow('<span class="term-out-mag">Q:</span> How do I use this thing?', '', myGen);
+    await slow('<span class="term-out-info">A:</span> Type commands at the prompt. <span class="term-out-ok">help</span> lists them. Tab completes. ↑/↓ scrolls history. Ctrl+L clears.', 'dim', myGen);
+    await slowBlank(myGen);
+    await slow('<span class="term-out-mag">Q:</span> Found a bug?', '', myGen);
+    await slow(`<span class="term-out-info">A:</span> Drop it in <a href="${CONFIG.links.discord}" target="_blank" rel="noopener">Discord</a>, or email any officer (see <a href="#" onclick="switchTab('contact');return false;">contact.sh</a>).`, 'dim', myGen);
   }
 
   async function printLab() {
-    const g = printGen;
-    await slow('# lab.sh — members-only practice environment', 'mag', g);
-    await slowBlank(g);
-    await slow('Live isolated CTF lab for hands-on practice. All access is gated by Cloudflare Access — your email must be on the lab allowlist before any of the URLs below will work.', 'dim', g);
-    await slowBlank(g);
+    const myGen = printGen;
+    await slow('# lab.sh — members-only practice environment', 'mag', myGen);
+    await slowBlank(myGen);
+    await slow('Live isolated CTF lab for hands-on practice. All access is gated by Cloudflare Access — your email must be on the lab allowlist before any of the URLs below will work.', 'dim', myGen);
+    await slowBlank(myGen);
 
     // --- Services ---
-    await slow('<span class="term-out-warn">## Services</span>', '', g);
-    await slowBlank(g);
-    await slow('  <span class="term-out-ok">[+]</span> <span class="term-out-info">CTFd</span>                <a href="https://ctf.oitcybersec.org" target="_blank" rel="noopener">ctf.oitcybersec.org</a>      <span class="term-out-dim">— CTF challenges + flags</span>', '', g);
-    await slow('  <span class="term-out-ok">[+]</span> <span class="term-out-info">Kali</span> <span class="term-out-dim">(Browser SSH)</span>  <a href="https://kali.oitcybersec.org" target="_blank" rel="noopener">kali.oitcybersec.org</a>     <span class="term-out-dim">— attack platform, terminal in browser</span>', '', g);
-    await slow('  <span class="term-out-ok">[+]</span> <span class="term-out-info">Wazuh</span>               <a href="https://wazuh.oitcybersec.org" target="_blank" rel="noopener">wazuh.oitcybersec.org</a>    <span class="term-out-dim">— SIEM dashboard (blue-team practice)</span>', '', g);
-    await slow('  <span class="term-out-ok">[+]</span> <span class="term-out-info">Proxmox</span>             <a href="https://proxmox.oitcybersec.org" target="_blank" rel="noopener">proxmox.oitcybersec.org</a>  <span class="term-out-dim">— VM management (officers + advanced)</span>', '', g);
-    await slowBlank(g);
+    await slow('<span class="term-out-warn">## Services</span>', '', myGen);
+    await slowBlank(myGen);
+    await slow('  <span class="term-out-ok">[+]</span> <span class="term-out-info">CTFd</span>                <a href="https://ctf.oitcybersec.org" target="_blank" rel="noopener">ctf.oitcybersec.org</a>      <span class="term-out-dim">— CTF challenges + flags</span>', '', myGen);
+    await slow('  <span class="term-out-ok">[+]</span> <span class="term-out-info">Kali</span> <span class="term-out-dim">(Browser SSH)</span>  <a href="https://kali.oitcybersec.org" target="_blank" rel="noopener">kali.oitcybersec.org</a>     <span class="term-out-dim">— attack platform, terminal in browser</span>', '', myGen);
+    await slow('  <span class="term-out-ok">[+]</span> <span class="term-out-info">Wazuh</span>               <a href="https://wazuh.oitcybersec.org" target="_blank" rel="noopener">wazuh.oitcybersec.org</a>    <span class="term-out-dim">— SIEM dashboard (blue-team practice)</span>', '', myGen);
+    await slow('  <span class="term-out-ok">[+]</span> <span class="term-out-info">Proxmox</span>             <a href="https://proxmox.oitcybersec.org" target="_blank" rel="noopener">proxmox.oitcybersec.org</a>  <span class="term-out-dim">— VM management (officers + advanced)</span>', '', myGen);
+    await slowBlank(myGen);
 
     // --- How to get access ---
-    await slow('<span class="term-out-warn">## How to get access</span>', '', g);
-    await slowBlank(g);
-    await slow(`  <span class="term-out-mag">1.</span> Ask an officer to add your email to the lab allowlist <span class="term-out-dim">(see <a href="#" onclick="switchTab('contact');return false;">contact.sh</a>)</span>`, '', g);
-    await slow('  <span class="term-out-mag">2.</span> Visit any of the URLs above', '', g);
-    await slow('  <span class="term-out-mag">3.</span> Enter your email — Cloudflare sends a 6-digit one-time code', '', g);
-    await slow('  <span class="term-out-mag">4.</span> Submit the code — you\'re in', '', g);
-    await slowBlank(g);
+    await slow('<span class="term-out-warn">## How to get access</span>', '', myGen);
+    await slowBlank(myGen);
+    await slow(`  <span class="term-out-mag">1.</span> Ask an officer to add your email to the lab allowlist <span class="term-out-dim">(see <a href="#" onclick="switchTab('contact');return false;">contact.sh</a>)</span>`, '', myGen);
+    await slow('  <span class="term-out-mag">2.</span> Visit any of the URLs above', '', myGen);
+    await slow('  <span class="term-out-mag">3.</span> Enter your email — Cloudflare sends a 6-digit one-time code', '', myGen);
+    await slow('  <span class="term-out-mag">4.</span> Submit the code — you\'re in', '', myGen);
+    await slowBlank(myGen);
 
     // --- What's in the lab ---
-    await slow('<span class="term-out-warn">## What\'s in the lab</span>', '', g);
-    await slowBlank(g);
-    await slow('  <span class="term-out-info">DC01</span>      Windows Server 2019 — Active Directory domain controller', '', g);
-    await slow('  <span class="term-out-info">Win11</span>     domain-joined workstation', '', g);
-    await slow('  <span class="term-out-info">Kali</span>      your attack platform', '', g);
-    await slow('  <span class="term-out-info">Wazuh</span>     blue-team SIEM — log analysis, detection rules', '', g);
-    await slowBlank(g);
-    await slow('Several AD attack paths are baked into the domain. Find them with BloodHound, Rubeus, impacket — whatever your tool of choice is.', 'dim', g);
-    await slowBlank(g);
+    await slow('<span class="term-out-warn">## What\'s in the lab</span>', '', myGen);
+    await slowBlank(myGen);
+    await slow('  <span class="term-out-info">DC01</span>      Windows Server 2019 — Active Directory domain controller', '', myGen);
+    await slow('  <span class="term-out-info">Win11</span>     domain-joined workstation', '', myGen);
+    await slow('  <span class="term-out-info">Kali</span>      your attack platform', '', myGen);
+    await slow('  <span class="term-out-info">Wazuh</span>     blue-team SIEM — log analysis, detection rules', '', myGen);
+    await slowBlank(myGen);
+    await slow('Several AD attack paths are baked into the domain. Find them with BloodHound, Rubeus, impacket — whatever your tool of choice is.', 'dim', myGen);
+    await slowBlank(myGen);
 
     // --- Etiquette ---
-    await slow('<span class="term-out-warn">## Lab etiquette</span>', '', g);
-    await slowBlank(g);
-    await slow('  • Don\'t attempt to escape the lab subnet — it\'s isolated for a reason', '', g);
-    await slow('  • Shared environment — restore a VM snapshot if you break something material', '', g);
-    await slow(`  • Help each other out in <a href="${CONFIG.links.discord}" target="_blank" rel="noopener">Discord</a> #ctf channel; brag when you root the DC`, '', g);
+    await slow('<span class="term-out-warn">## Lab etiquette</span>', '', myGen);
+    await slowBlank(myGen);
+    await slow('  • Don\'t attempt to escape the lab subnet — it\'s isolated for a reason', '', myGen);
+    await slow('  • Shared environment — restore a VM snapshot if you break something material', '', myGen);
+    await slow(`  • Help each other out in <a href="${CONFIG.links.discord}" target="_blank" rel="noopener">Discord</a> #ctf channel; brag when you root the DC`, '', myGen);
   }
 
   // projects.md tab — list comes from CONFIG.projects (admin-editable via /admin).
@@ -736,17 +736,17 @@ _text
   //   shipped  → info  (blue)
   //   archived → dim
   async function printProjects() {
-    const g = printGen;
+    const myGen = printGen;
     const projects = Array.isArray(CONFIG.projects) ? CONFIG.projects : [];
 
-    await slow('# projects.md', 'mag', g);
-    await slowBlank(g);
-    await slow('What we\'re building, what we\'ve shipped, what we\'ve retired.', '', g);
-    await slow('Want to lead one? Mention it in <a href="' + CONFIG.links.discord + '" target="_blank" rel="noopener">Discord</a> or at any meeting.', 'dim', g);
-    await slowBlank(g);
+    await slow('# projects.md', 'mag', myGen);
+    await slowBlank(myGen);
+    await slow('What we\'re building, what we\'ve shipped, what we\'ve retired.', '', myGen);
+    await slow('Want to lead one? Mention it in <a href="' + CONFIG.links.discord + '" target="_blank" rel="noopener">Discord</a> or at any meeting.', 'dim', myGen);
+    await slowBlank(myGen);
 
     if (!projects.length) {
-      await slow('  <span class="term-out-dim">(no projects yet — check back soon)</span>', '', g);
+      await slow('  <span class="term-out-dim">(no projects yet — check back soon)</span>', '', myGen);
       return;
     }
 
@@ -756,13 +756,13 @@ _text
     for (const p of projects) {
       const sc = statusClass[p.status] || 'term-out-dim';
       const sl = statusLabel[p.status] || '[?]';
-      await slow(`<span class="${sc}">${sl}</span> <span class="term-out-warn">${escapeHtml(p.name)}</span>`, '', g);
-      await slow(`  ${escapeHtml(p.desc)}`, 'dim', g);
+      await slow(`<span class="${sc}">${sl}</span> <span class="term-out-warn">${escapeHtml(p.name)}</span>`, '', myGen);
+      await slow(`  ${escapeHtml(p.desc)}`, 'dim', myGen);
       if (p.tech && p.tech.length) {
-        await slow(`  <span class="term-out-dim">tech    :</span> ${p.tech.map(t => escapeHtml(t)).join(', ')}`, '', g);
+        await slow(`  <span class="term-out-dim">tech    :</span> ${p.tech.map(t => escapeHtml(t)).join(', ')}`, '', myGen);
       }
       if (p.members && p.members.length) {
-        await slow(`  <span class="term-out-dim">members :</span> ${p.members.map(m => escapeHtml(m)).join(', ')}`, '', g);
+        await slow(`  <span class="term-out-dim">members :</span> ${p.members.map(m => escapeHtml(m)).join(', ')}`, '', myGen);
       }
       if (p.link) {
         const href = p.link.href;
@@ -770,15 +770,15 @@ _text
           // Runs an in-terminal command (e.g. "cmd:ctf list") via the global
           // execute() so the link actually exercises the feature it advertises.
           const cmd = href.slice(4).replace(/'/g, "\\'");
-          await slow(`  <span class="term-out-dim">link    :</span> <a href="#" onclick="execute('${cmd}');return false;">${escapeHtml(p.link.label)}</a>`, '', g);
+          await slow(`  <span class="term-out-dim">link    :</span> <a href="#" onclick="execute('${cmd}');return false;">${escapeHtml(p.link.label)}</a>`, '', myGen);
         } else if (href.startsWith('#')) {
           const tab = href.slice(1);
-          await slow(`  <span class="term-out-dim">link    :</span> <a href="#" onclick="switchTab('${tab}');return false;">${escapeHtml(p.link.label)}</a>`, '', g);
+          await slow(`  <span class="term-out-dim">link    :</span> <a href="#" onclick="switchTab('${tab}');return false;">${escapeHtml(p.link.label)}</a>`, '', myGen);
         } else {
-          await slow(`  <span class="term-out-dim">link    :</span> <a href="${href}" target="_blank" rel="noopener">${escapeHtml(p.link.label)}</a>`, '', g);
+          await slow(`  <span class="term-out-dim">link    :</span> <a href="${href}" target="_blank" rel="noopener">${escapeHtml(p.link.label)}</a>`, '', myGen);
         }
       }
-      await slowBlank(g);
+      await slowBlank(myGen);
     }
   }
 
@@ -790,7 +790,7 @@ _text
   // - Solve count shows "?" instead of "0" for legacy entries missing `n`
   //   (the worker backfills full-completion entries but can't reverse-engineer
   //   partial-progress legacy data).
-  async function _renderBoardRow(e, rank, highlightUsername, total, myGen) {
+  async function renderBoardRow(e, rank, highlightUsername, total, myGen) {
     const isMe = highlightUsername && e.u === highlightUsername;
     const rankStr = String(rank).padStart(2, ' ');
     const name = String(e.u || '').padEnd(20, ' ');
@@ -807,7 +807,7 @@ _text
   // Shows top 10 always; if the highlighted player is below #10, adds a
   // separator line ("⋮") and renders the player's row plus one row above
   // and one below for context — so they see exactly who's nearby.
-  async function _slowRenderBoard(title, list, myGen, highlightUsername) {
+  async function slowRenderBoard(title, list, myGen, highlightUsername) {
     await slow(title, 'mag', myGen);
     if (!list || !list.length) {
       await slow('  <span class="term-out-dim">(no entries yet — be the first!)</span>', '', myGen);
@@ -818,7 +818,7 @@ _text
 
     // Top 10
     for (let i = 0; i < top10Count; i++) {
-      await _renderBoardRow(list[i], i + 1, highlightUsername, total, myGen);
+      await renderBoardRow(list[i], i + 1, highlightUsername, total, myGen);
     }
 
     // If the player is below the visible top 10, drop a separator and render
@@ -828,27 +828,27 @@ _text
       await slow('  <span class="term-out-dim">           ⋮</span>', '', myGen);
       for (let i = myIdx - 1; i <= myIdx + 1; i++) {
         if (i >= 10 && i < list.length) {
-          await _renderBoardRow(list[i], i + 1, highlightUsername, total, myGen);
+          await renderBoardRow(list[i], i + 1, highlightUsername, total, myGen);
         }
       }
     }
   }
 
   async function printLeaderboard() {
-    const g = printGen;
-    await slow('# ranks.json — global CTF leaderboard', 'mag', g);
-    await slowBlank(g);
-    await slow('Top 10 players ranked by <span class="term-out-mag">points earned</span> (ties broken by faster time). Updates live as players solve.', '', g);
-    await slow('Run <span class="term-out-ok">submit &lt;username&gt;</span> after your first solve to join — your row climbs as you capture more flags.', 'dim', g);
-    await slow('The "this term" board resets each quarter; "all time" is the permanent record.', 'dim', g);
-    await slowBlank(g);
-    let d;
+    const myGen = printGen;
+    await slow('# ranks.json — global CTF leaderboard', 'mag', myGen);
+    await slowBlank(myGen);
+    await slow('Top 10 players ranked by <span class="term-out-mag">points earned</span> (ties broken by faster time). Updates live as players solve.', '', myGen);
+    await slow('Run <span class="term-out-ok">submit &lt;username&gt;</span> after your first solve to join — your row climbs as you capture more flags.', 'dim', myGen);
+    await slow('The "this term" board resets each quarter; "all time" is the permanent record.', 'dim', myGen);
+    await slowBlank(myGen);
+    let data;
     try {
-      const r = await fetch('/api/leaderboard');
-      if (!r.ok) throw new Error(r.status);
-      d = await r.json();
+      const response = await fetch('/api/leaderboard');
+      if (!response.ok) throw new Error(response.status);
+      data = await response.json();
     } catch (_) {
-      await slow('<span class="term-out-err">leaderboard unreachable</span> <span class="term-out-dim">(offline / local preview)</span>', '', g);
+      await slow('<span class="term-out-err">leaderboard unreachable</span> <span class="term-out-dim">(offline / local preview)</span>', '', myGen);
       return;
     }
     const me = (ctfTimer && ctfTimer.submittedAs) || null;
@@ -856,9 +856,9 @@ _text
     // neighbor rows. The standalone "Your standing as of last solve" line
     // is gone — replaced by the contextual rows, which are strictly more
     // informative (you see who's near you, not just an abstract number).
-    await _slowRenderBoard('── THIS TERM ──', d && d.current, g, me);
-    await slowBlank(g);
-    await _slowRenderBoard('── ALL TIME ──', d && d.alltime, g, me);
+    await slowRenderBoard('── THIS TERM ──', data && data.current, myGen, me);
+    await slowBlank(myGen);
+    await slowRenderBoard('── ALL TIME ──', data && data.alltime, myGen, me);
   }
 
   async function printPage(name) {
@@ -875,8 +875,8 @@ _text
      COMMANDS
      ============================================================ */
   const COMMANDS = {
-    help: { desc:'List commands. Run `help <name>` for details on one.', run: (a) => {
-      const target = (a[0] || '').toLowerCase();
+    help: { desc:'List commands. Run `help <name>` for details on one.', run: (args) => {
+      const target = (args[0] || '').toLowerCase();
       // ---- Detail view for a specific command ----
       if (target) {
         const cmd = COMMANDS[target];
@@ -957,8 +957,8 @@ _text
       out('<span class="term-out-info">README</span>');
     }},
 
-    cat: { desc:'Show contents of a "file"', run: (a) => {
-      const f = (a[0]||'').toLowerCase();
+    cat: { desc:'Show contents of a "file"', run: (args) => {
+      const f = (args[0]||'').toLowerCase();
       const fs = {
         'readme':()=>switchTab('home'), 'about.md':()=>switchTab('about'),
         'events.json':()=>switchTab('events'), 'contact.sh':()=>switchTab('contact'),
@@ -976,7 +976,7 @@ _text
     pwd:    { desc:'Print working directory', run: () => out('/home/hacker'+termPath.textContent.replace('~',''), 'ok') },
     date:   { desc:'Show current date',       run: () => out(new Date().toString(), 'ok') },
     uname:  { desc:'Print system info',       run: () => out('Linux club-host 6.9.0-club #1 SMP x86_64 GNU/Linux', 'ok') },
-    echo:   { desc:'Echo arguments',          run: (a) => out(escapeHtml(a.join(' '))) },
+    echo:   { desc:'Echo arguments',          run: (args) => out(escapeHtml(args.join(' '))) },
 
     sudo:   { desc:'Become root (you wish)',  run: () => {
       out('[sudo] password for hacker:', 'dim');
@@ -1002,35 +1002,35 @@ _text
       usage: 'ctf [list|start <n>|retry|reset]',
       examples: ['ctf list', 'ctf start 3', 'ctf retry', 'ctf reset'],
       notes: 'Progress saves to localStorage so it survives reloads.\n\n`ctf retry` wipes progress for a fresh attempt but keeps your leaderboard username — your entry only updates if the new run beats your old score.\n`ctf reset` is the nuclear option: wipes everything including your leaderboard registration.',
-      run: (a) => {
-      const sub = (a[0] || 'list').toLowerCase();
-      if (sub === 'list' || sub === 'ls') {
+      run: (args) => {
+      const subcommand = (args[0] || 'list').toLowerCase();
+      if (subcommand === 'list' || subcommand === 'ls') {
         out('CTF CHALLENGES', 'mag');
         out('──────────────', 'dim');
-        CHALLENGES.forEach(ch => {
-          const mark = ctfState.solved.has(ch.id) ? '<span class="term-out-ok">[✓]</span>' : '<span class="term-out-dim">[ ]</span>';
-          out(`${mark}  <span class="term-out-info">#${ch.id}</span> <span style="color:var(--magenta)">${ch.name.padEnd(16)}</span><span class="term-out-dim">${ch.points}pts</span>`);
+        CHALLENGES.forEach(challenge => {
+          const mark = ctfState.solved.has(challenge.id) ? '<span class="term-out-ok">[✓]</span>' : '<span class="term-out-dim">[ ]</span>';
+          out(`${mark}  <span class="term-out-info">#${challenge.id}</span> <span style="color:var(--magenta)">${challenge.name.padEnd(16)}</span><span class="term-out-dim">${challenge.points}pts</span>`);
         });
         blank();
         out(`Total: ${ctfState.solved.size}/${CHALLENGES.length} solved · ${ctfState.points} points`, 'mag');
         out('Run `ctf start <n>` for details. Submit with `flag <text>`.', 'dim');
         return;
       }
-      if (sub === 'start' || sub === 'open') {
-        const n = parseInt(a[1], 10);
-        const ch = CHALLENGES.find(c => c.id === n);
-        if (!ch) return out('usage: ctf start <number>   (1-'+CHALLENGES.length+')', 'err');
-        ctfState.activeChallenge = ch.id;
+      if (subcommand === 'start' || subcommand === 'open') {
+        const challengeId = parseInt(args[1], 10);
+        const challenge = CHALLENGES.find(c => c.id === challengeId);
+        if (!challenge) return out('usage: ctf start <number>   (1-'+CHALLENGES.length+')', 'err');
+        ctfState.activeChallenge = challenge.id;
         // Start the leaderboard timer the first time the player engages.
         startTimerIfFirstRun();
-        out(`── Challenge #${ch.id}: ${ch.name} (${ch.points}pts) ──`, 'mag');
-        out(ch.brief);
+        out(`── Challenge #${challenge.id}: ${challenge.name} (${challenge.points}pts) ──`, 'mag');
+        out(challenge.brief);
         blank();
         out(`Submit with: flag &lt;value&gt;   (the flag{} wrapper is optional)`, 'dim');
-        out(`Stuck? hint ${ch.id}`, 'dim');
+        out(`Stuck? hint ${challenge.id}`, 'dim');
         return;
       }
-      if (sub === 'reset') {
+      if (subcommand === 'reset') {
         ctfState.solved.clear();
         ctfState.points = 0;
         ctfState.activeChallenge = null;
@@ -1042,7 +1042,7 @@ _text
         out('CTF progress cleared.', 'warn');
         return;
       }
-      if (sub === 'retry') {
+      if (subcommand === 'retry') {
         // Retry = wipe progress for a fresh attempt, but KEEP the player's
         // leaderboard username (and skipped flag) so their entry can be
         // beaten by the new run. insertOrUpgrade on the server side keeps
@@ -1072,8 +1072,8 @@ _text
       usage: 'flag <value>',
       examples: ['flag flag{example}', 'flag {example}', 'flag example', 'flag{example}'],
       notes: 'All four formats above are equivalent. The leading `flag` command is even optional — typing `flag{...}` or `{...}` on its own works too.',
-      run: (a) => {
-      let submission = a.join(' ').trim();
+      run: (args) => {
+      let submission = args.join(' ').trim();
       if (!submission) return out('usage: flag <value>   (you can include flag{...} or just the inside)', 'err');
       // Normalize: accept "flag{x}", "{x}", or bare "x" — wrap into flag{x}
       if (!/^flag\{.*\}$/i.test(submission)) {
@@ -1106,8 +1106,8 @@ _text
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ flag: submission }),
-      }).then(r => r.ok ? r.json() : null).then(d => {
-        if (d && typeof d.total === 'number') updateBootSolves(d.total);
+      }).then(response => response.ok ? response.json() : null).then(data => {
+        if (data && typeof data.total === 'number') updateBootSolves(data.total);
       }).catch(() => {});
       // ROLLING LEADERBOARD —
       // 1) On the FIRST solve, prompt for a username. Subsequent solves
@@ -1165,8 +1165,8 @@ _text
       usage: 'submit [username]',
       examples: ['submit', 'submit AlphaHacker', 'submit scott_r'],
       notes: 'Username: 3-20 chars, A-Z / 0-9 / hyphen / underscore.\nWith no argument, drops into prompt mode — type the username on the next line.\nRolling leaderboard: each subsequent solve updates your row live (more points / faster time wins).\nSilently no-ops if the API is unreachable (offline / local preview).',
-      run: async (a) => {
-      const username = (a[0] || '').trim();
+      run: async (args) => {
+      const username = (args[0] || '').trim();
       // Rolling-leaderboard semantics: at least one solve is required, but
       // you don't need to be complete. Your entry updates live as you go.
       if (ctfState.solved.size < 1) {
@@ -1192,21 +1192,21 @@ _text
       const solvedIds = Array.from(ctfState.solved).sort((a, b) => a - b);
       out(`submitting <span class="term-out-info">${escapeHtml(username)}</span> (${formatElapsed(elapsed)})...`, 'dim');
       try {
-        const r = await fetch('/api/submit-score', {
+        const response = await fetch('/api/submit-score', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username, solvedIds, elapsedMs: elapsed }),
         });
-        const d = await r.json().catch(() => null);
-        if (!r.ok || !d || !d.ok) {
-          return out(`✗ ${escapeHtml(d && d.error ? d.error : 'submission failed (' + r.status + ')')}`, 'err');
+        const data = await response.json().catch(() => null);
+        if (!response.ok || !data || !data.ok) {
+          return out(`✗ ${escapeHtml(data && data.error ? data.error : 'submission failed (' + response.status + ')')}`, 'err');
         }
         ctfTimer.submittedAs = username;
-        ctfTimer.lastRankCurrent = d.rankCurrent;
-        ctfTimer.lastRankAllTime = d.rankAllTime;
+        ctfTimer.lastRankCurrent = data.rankCurrent;
+        ctfTimer.lastRankAllTime = data.rankAllTime;
         saveTimer();
         out(`✓ submitted as <span class="term-out-mag">${escapeHtml(username)}</span>`, 'ok');
-        out(`  this term: rank <span class="term-out-warn">#${d.rankCurrent}</span>${d.rankAllTime ? ` · all-time: <span class="term-out-warn">#${d.rankAllTime}</span>` : ''}`, '');
+        out(`  this term: rank <span class="term-out-warn">#${data.rankCurrent}</span>${data.rankAllTime ? ` · all-time: <span class="term-out-warn">#${data.rankAllTime}</span>` : ''}`, '');
         out(`Run \`leaderboard\` to see the full standings.`, 'dim');
       } catch (e) {
         out(`✗ submission failed (network unreachable?)`, 'err');
@@ -1219,8 +1219,8 @@ _text
       usage: 'hint [n|name]',
       examples: ['hint 3', 'hint base64', 'hint nmap_recon', 'hint'],
       notes: 'With no argument, shows the hint for the currently active challenge (the last `ctf start <n>`).',
-      run: (a) => {
-      const arg = (a[0] || '').toLowerCase();
+      run: (args) => {
+      const arg = (args[0] || '').toLowerCase();
       let ch = null;
       if (arg) {
         const n = parseInt(arg, 10);
@@ -1247,8 +1247,8 @@ _text
       usage: 'python [expression]',
       examples: ['python', 'python 2 + 2', "python import base64; print(base64.b64decode('aGk=').decode())", 'python [x*x for x in range(5)]'],
       notes: 'No args drops you into an interactive >>> REPL. Type exit() or Ctrl+C to leave.\nFirst use downloads ~10MB Pyodide WASM (cached after).',
-      run: async (a) => {
-      const expr = a.join(' ').trim();
+      run: async (args) => {
+      const expr = args.join(' ').trim();
       try {
         await ensurePyodide(msg => out('  '+msg, 'dim'));
         if (!expr) {
@@ -1268,7 +1268,7 @@ _text
       }
     }},
 
-    py: { desc:'Alias for python', run: (a) => COMMANDS.python.run(a) },
+    py: { desc:'Alias for python', run: (args) => COMMANDS.python.run(args) },
 
     /* ============================================================
        NETWORK / SECURITY (all simulated — no real packets leave the page)
@@ -1277,13 +1277,13 @@ _text
       usage: 'nmap <host>',
       examples: ['nmap localhost', 'nmap oit.edu', 'nmap 10.50.0.1'],
       notes: 'Output is simulated — no packets actually leave your browser.\nScanning the local IP turns up something interesting (CTF #8).',
-      run: async (a) => {
-      const target = a[0] || 'localhost';
-      const safeT = escapeHtml(target);
-      const ts = new Date().toISOString().slice(0,19).replace('T',' ');
-      out(`Starting Nmap 7.94 ( https://nmap.org ) at ${ts}`, 'dim');
-      await new Promise(r => setTimeout(r, 250));
-      out(`Nmap scan report for <span class="term-out-info">${safeT}</span>`);
+      run: async (args) => {
+      const target = args[0] || 'localhost';
+      const safeTarget = escapeHtml(target);
+      const timestamp = new Date().toISOString().slice(0,19).replace('T',' ');
+      out(`Starting Nmap 7.94 ( https://nmap.org ) at ${timestamp}`, 'dim');
+      await new Promise(resolve => setTimeout(resolve, 250));
+      out(`Nmap scan report for <span class="term-out-info">${safeTarget}</span>`);
       out(`Host is up (0.0023s latency).`, 'dim');
       blank();
       out(`PORT      STATE     SERVICE         VERSION`, 'warn');
@@ -1295,10 +1295,10 @@ _text
         ['8080/tcp', 'closed',   'http-proxy',   '?'],
         ['9000/tcp', 'open',     'cslistener',   'unknown'],
       ];
-      for (const [port, state, svc, ver] of ports) {
-        await new Promise(r => setTimeout(r, 220));
-        const cls = state === 'open' ? 'ok' : state === 'filtered' ? 'warn' : 'dim';
-        out(`${port.padEnd(10)}<span class="term-out-${cls}">${state.padEnd(10)}</span>${svc.padEnd(16)}${ver}`);
+      for (const [port, state, service, version] of ports) {
+        await new Promise(resolve => setTimeout(resolve, 220));
+        const stateClass = state === 'open' ? 'ok' : state === 'filtered' ? 'warn' : 'dim';
+        out(`${port.padEnd(10)}<span class="term-out-${stateClass}">${state.padEnd(10)}</span>${service.padEnd(16)}${version}`);
       }
       // CTF #8: leak a flag in a service banner only when the player scans
       // the exact IP surfaced by `ifconfig` (10.50.0.1). Bare `nmap` and
@@ -1306,9 +1306,9 @@ _text
       // The banner is base64-encoded so the literal `flag{...}` string
       // never appears in page source — defeats casual `Ctrl+F flag{`.
       if (target === '10.50.0.1') {
-        await new Promise(r => setTimeout(r, 280));
-        const _banner = atob('ZmxhZ3tubWFwX2ZpbmRzX3doYXRfZXllc19taXNzfQ==');
-        out(`1337/tcp  <span class="term-out-ok">open</span>      ctf-banner      <span class="term-out-mag">Banner: ${escapeHtml(_banner)}</span>`);
+        await new Promise(resolve => setTimeout(resolve, 280));
+        const decodedBanner = atob('ZmxhZ3tubWFwX2ZpbmRzX3doYXRfZXllc19taXNzfQ==');
+        out(`1337/tcp  <span class="term-out-ok">open</span>      ctf-banner      <span class="term-out-mag">Banner: ${escapeHtml(decodedBanner)}</span>`);
         out(`|_ctf-banner: service is leaking debug data — submit the banner with \`flag &lt;text&gt;\``, 'dim');
       }
       blank();
@@ -1318,12 +1318,12 @@ _text
     ping: { desc:'Send ICMP echo requests (simulated)',
       usage: 'ping <host>',
       examples: ['ping localhost', 'ping oit.edu'],
-      run: async (a) => {
-      const t = escapeHtml(a[0] || 'localhost');
+      run: async (args) => {
+      const t = escapeHtml(args[0] || 'localhost');
       out(`PING ${t} (10.50.0.1) 56(84) bytes of data.`);
       let received = 0;
       for (let i = 0; i < 4; i++) {
-        await new Promise(r => setTimeout(r, 350));
+        await new Promise(resolve => setTimeout(resolve, 350));
         const time = (Math.random() * 5 + 0.4).toFixed(2);
         out(`64 bytes from ${t}: icmp_seq=${i+1} ttl=64 time=${time} ms`);
         received++;
@@ -1336,8 +1336,8 @@ _text
     dig: { desc:'DNS lookup (simulated)',
       usage: 'dig <domain>',
       examples: ['dig oit.edu', 'dig example.com'],
-      run: (a) => {
-      const t = escapeHtml(a[0] || 'oit.edu');
+      run: (args) => {
+      const t = escapeHtml(args[0] || 'oit.edu');
       out(`; <<>> DiG 9.18 <<>> ${t}`, 'dim');
       blank();
       out(`;; ANSWER SECTION:`, 'warn');
@@ -1348,8 +1348,8 @@ _text
       out(`;; SERVER: 1.1.1.1#53(1.1.1.1)`, 'dim');
     }},
 
-    whois: { desc:'Domain registration lookup (simulated)', run: (a) => {
-      const t = (a[0] || 'oit.edu').toUpperCase();
+    whois: { desc:'Domain registration lookup (simulated)', run: (args) => {
+      const t = (args[0] || 'oit.edu').toUpperCase();
       out(`Domain Name: ${escapeHtml(t)}`);
       out(`Registry: EDUCAUSE`);
       out(`Registrant: Oregon Institute of Technology`);
@@ -1361,8 +1361,8 @@ _text
     traceroute: { desc:'Trace route to a host (simulated)',
       usage: 'traceroute <host>',
       examples: ['traceroute oit.edu', 'traceroute google.com'],
-      run: async (a) => {
-      const t = escapeHtml(a[0] || 'oit.edu');
+      run: async (args) => {
+      const t = escapeHtml(args[0] || 'oit.edu');
       out(`traceroute to ${t} (199.46.115.21), 30 hops max, 60 byte packets`);
       const hops = [
         ['10.50.0.1',     '0.5'],
@@ -1373,7 +1373,7 @@ _text
         ['199.46.115.21', '24.1'],
       ];
       for (let i = 0; i < hops.length; i++) {
-        await new Promise(r => setTimeout(r, 220));
+        await new Promise(resolve => setTimeout(resolve, 220));
         out(` ${(i+1).toString().padStart(2)}  ${hops[i][0].padEnd(20)}  ${hops[i][1]} ms`);
       }
     }},
@@ -1405,9 +1405,9 @@ _text
     curl: { desc:'Make an HTTP request (simulated)',
       usage: 'curl <url>',
       examples: ['curl https://oit.edu', 'curl http://localhost'],
-      run: (a) => {
-      if (!a[0]) return out('usage: curl &lt;url&gt;', 'err');
-      const url = escapeHtml(a[0]);
+      run: (args) => {
+      if (!args[0]) return out('usage: curl &lt;url&gt;', 'err');
+      const url = escapeHtml(args[0]);
       out(`* Trying ${url}...`, 'dim');
       out(`&gt; GET / HTTP/2`, 'info');
       out(`&gt; User-Agent: curl/8.0`, 'dim');
@@ -1419,8 +1419,8 @@ _text
       out(`&lt;!doctype html&gt;&lt;title&gt;Hello from ${url}&lt;/title&gt;`);
     }},
 
-    ssh: { desc:'Connect to a remote host', run: (a) => {
-      const t = escapeHtml(a[0] || 'localhost');
+    ssh: { desc:'Connect to a remote host', run: (args) => {
+      const t = escapeHtml(args[0] || 'localhost');
       out(`Permission denied (publickey).`, 'err');
       out(`ssh: connect to host ${t} port 22: Authentication failure`, 'dim');
     }},
@@ -1435,27 +1435,27 @@ _text
       usage: 'login <username> <password>',
       examples: ['login admin admin', 'login root toor', "login admin'-- ignored"],
       notes: 'Output is simulated — no real auth happens.\nA real login system. Try not to break it.\nNote: arguments split on whitespace, so wrap multi-word values carefully.',
-      run: async (a) => {
-      const user = a[0] || '';
-      const pass = a.slice(1).join(' ') || '';
+      run: async (args) => {
+      const user = args[0] || '';
+      const pass = args.slice(1).join(' ') || '';
       if (!user || !pass) return out('usage: login &lt;username&gt; &lt;password&gt;', 'err');
 
       // The "vulnerability" — interpolate user input straight into SQL and print it
       const sql = `SELECT * FROM users WHERE name='${user}' AND pass='${pass}'`;
       out(`<span class="term-out-dim">[debug] executing: ${escapeHtml(sql)}</span>`);
-      await new Promise(r => setTimeout(r, 280));
+      await new Promise(resolve => setTimeout(resolve, 280));
 
       // Detect classic auth-bypass patterns. We're matching against the resulting
       // SQL string so single-quote-escapes, comments, and tautologies all count.
       const injected = /'\s*(or|\|\|)\s+('?\d+'?\s*=\s*'?\d+'?|true|'[^']*'\s*=\s*'[^']*')|'\s*(--|#|\/\*)/i.test(sql);
 
       if (injected) {
-        const _flag = atob('ZmxhZ3tzcWxfaW5qZWN0aW9uX2lzX2NsYXNzaWN9');
+        const decodedFlag = atob('ZmxhZ3tzcWxfaW5qZWN0aW9uX2lzX2NsYXNzaWN9');
         out(`<span class="term-out-ok">✓ query returned 1 row (auth check bypassed)</span>`);
         out(`Welcome, admin. Session token issued.`, 'dim');
         blank();
         out(`<span class="term-out-warn">id  name   role   note</span>`);
-        out(`1   admin  root   <span class="term-out-mag">${escapeHtml(_flag)}</span>`);
+        out(`1   admin  root   <span class="term-out-mag">${escapeHtml(decodedFlag)}</span>`);
         out(`|_ submit the note value with \`flag &lt;text&gt;\``, 'dim');
         return;
       }
@@ -1475,16 +1475,16 @@ _text
       usage: 'token <username>',
       examples: ['token alice', 'token bob'],
       notes: 'All issued tokens carry role=user. To see the admin debug-note in whoami-jwt, you will need to forge a token. Hint: read up on JWT alg=none.',
-      run: (a) => {
-      const user = (a[0] || 'guest').slice(0, 32);
+      run: (args) => {
+      const user = (args[0] || 'guest').slice(0, 32);
       const header  = { alg: 'HS256', typ: 'JWT' };
       const payload = { user, role: 'user', iat: Math.floor(Date.now()/1000) };
-      const h = _b64urlEncode(JSON.stringify(header));
-      const p = _b64urlEncode(JSON.stringify(payload));
-      const sig = _hmacFake(h, p);
-      const tok = `${h}.${p}.${sig}`;
+      const encodedHeader  = b64urlEncode(JSON.stringify(header));
+      const encodedPayload = b64urlEncode(JSON.stringify(payload));
+      const signature      = hmacFake(encodedHeader, encodedPayload);
+      const token = `${encodedHeader}.${encodedPayload}.${signature}`;
       out(`Issued JWT for <span class="term-out-info">${escapeHtml(user)}</span>:`);
-      out(`  <span class="term-out-info">${escapeHtml(tok)}</span>`);
+      out(`  <span class="term-out-info">${escapeHtml(token)}</span>`);
       blank();
       out(`Inspect with \`jwt-decode &lt;token&gt;\`. Authenticate with \`whoami-jwt &lt;token&gt;\`.`, 'dim');
     }},
@@ -1493,15 +1493,15 @@ _text
       usage: 'jwt-decode <token>',
       examples: ['jwt-decode eyJhbGciOiJIUzI1NiJ9.eyJ1c2VyIjoiYWxpY2UifQ.sig'],
       notes: 'Read-only. Does not check the signature.',
-      run: (a) => {
-      const tok = (a[0] || '').trim();
-      if (!tok) return out('usage: jwt-decode &lt;token&gt;', 'err');
-      const parts = tok.split('.');
+      run: (args) => {
+      const token = (args[0] || '').trim();
+      if (!token) return out('usage: jwt-decode &lt;token&gt;', 'err');
+      const parts = token.split('.');
       if (parts.length !== 3) return out('not a JWT (expected 3 dot-separated parts)', 'err');
       let header, payload;
-      try { header  = JSON.parse(_b64urlDecode(parts[0])); }
+      try { header  = JSON.parse(b64urlDecode(parts[0])); }
       catch (e) { return out('header decode failed: ' + escapeHtml(e.message), 'err'); }
-      try { payload = JSON.parse(_b64urlDecode(parts[1])); }
+      try { payload = JSON.parse(b64urlDecode(parts[1])); }
       catch (e) { return out('payload decode failed: ' + escapeHtml(e.message), 'err'); }
       out(`<span class="term-out-warn">header:</span>    ${escapeHtml(JSON.stringify(header))}`);
       out(`<span class="term-out-warn">payload:</span>   ${escapeHtml(JSON.stringify(payload))}`);
@@ -1512,15 +1512,15 @@ _text
       usage: 'whoami-jwt <token>',
       examples: ['whoami-jwt <paste-token-here>'],
       notes: 'Returns the role-gated admin debug-note when role=admin.',
-      run: (a) => {
-      const tok = (a[0] || '').trim();
-      if (!tok) return out('usage: whoami-jwt &lt;token&gt;', 'err');
-      const parts = tok.split('.');
+      run: (args) => {
+      const token = (args[0] || '').trim();
+      if (!token) return out('usage: whoami-jwt &lt;token&gt;', 'err');
+      const parts = token.split('.');
       if (parts.length !== 3) return out('malformed token (expected 3 dot-separated parts)', 'err');
       let header, payload;
       try {
-        header  = JSON.parse(_b64urlDecode(parts[0]));
-        payload = JSON.parse(_b64urlDecode(parts[1]));
+        header  = JSON.parse(b64urlDecode(parts[0]));
+        payload = JSON.parse(b64urlDecode(parts[1]));
       } catch (e) { return out('decode error: ' + escapeHtml(e.message), 'err'); }
       out(`<span class="term-out-dim">[debug] alg = ${escapeHtml(String(header.alg))}</span>`);
 
@@ -1530,7 +1530,7 @@ _text
       if (header.alg === 'none') {
         sigOk = !parts[2];
       } else if (header.alg === 'HS256') {
-        sigOk = parts[2] === _hmacFake(parts[0], parts[1]);
+        sigOk = parts[2] === hmacFake(parts[0], parts[1]);
       }
       if (!sigOk) {
         out(`✗ signature verification failed (alg=${escapeHtml(String(header.alg))})`, 'err');
@@ -1540,10 +1540,10 @@ _text
       out(`Hello, <span class="term-out-info">${escapeHtml(String(payload.user || 'anonymous'))}</span> (role: ${escapeHtml(String(payload.role || 'user'))})`);
 
       if (payload.role === 'admin') {
-        const _flag = atob('ZmxhZ3tub25lX2FsZ19zdHJpa2VzX2FnYWlufQ==');
+        const decodedFlag = atob('ZmxhZ3tub25lX2FsZ19zdHJpa2VzX2FnYWlufQ==');
         blank();
         out(`<span class="term-out-mag">═══ ADMIN DEBUG PANEL ═══</span>`);
-        out(`  debug-note: <span class="term-out-mag">${escapeHtml(_flag)}</span>`);
+        out(`  debug-note: <span class="term-out-mag">${escapeHtml(decodedFlag)}</span>`);
         out(`|_ submit the note value with \`flag &lt;text&gt;\``, 'dim');
       } else {
         out(`(non-admins don't see the debug-note)`, 'dim');
@@ -1594,9 +1594,9 @@ _text
       usage: 'base64 (encode|decode) <text>',
       examples: ['base64 encode hello', 'base64 decode aGVsbG8=', 'base64 decode ZmxhZ3tiNjRfaXNfbm90X2VuY3J5cHRpb259'],
       notes: 'Real encoding via the browser btoa/atob — no fake output.',
-      run: (a) => {
-      const mode = (a[0]||'').toLowerCase();
-      const input = a.slice(1).join(' ');
+      run: (args) => {
+      const mode = (args[0]||'').toLowerCase();
+      const input = args.slice(1).join(' ');
       if (!mode || !input) return out('usage: base64 encode &lt;text&gt;  |  base64 decode &lt;text&gt;', 'err');
       try {
         const result = mode === 'encode' ? btoa(input) : mode === 'decode' ? atob(input) : null;
@@ -1611,22 +1611,22 @@ _text
       usage: 'rot13 <text>',
       examples: ['rot13 hello world', 'rot13 synt{ebgngr_guvegrra_cynprf}'],
       notes: 'ROT13 is its own inverse — encrypting twice gives you the original back.',
-      run: (a) => {
-      const input = a.join(' ');
+      run: (args) => {
+      const input = args.join(' ');
       if (!input) return out('usage: rot13 &lt;text&gt;', 'err');
-      const r = input.replace(/[a-zA-Z]/g, c => {
-        const base = c <= 'Z' ? 65 : 97;
-        return String.fromCharCode((c.charCodeAt(0) - base + 13) % 26 + base);
+      const rotated = input.replace(/[a-zA-Z]/g, ch => {
+        const base = ch <= 'Z' ? 65 : 97;
+        return String.fromCharCode((ch.charCodeAt(0) - base + 13) % 26 + base);
       });
-      out(escapeHtml(r), 'ok');
+      out(escapeHtml(rotated), 'ok');
     }},
 
     hash: { desc:'SHA-256 hash a string',
       usage: 'hash <text>',
       examples: ['hash hunter2', 'hash flag{example}'],
       notes: 'Real SHA-256 via the browser SubtleCrypto API. Requires HTTPS in production.',
-      run: async (a) => {
-      const input = a.join(' ');
+      run: async (args) => {
+      const input = args.join(' ');
       if (!input) return out('usage: hash &lt;text&gt;', 'err');
       const buf = new TextEncoder().encode(input);
       const h = await crypto.subtle.digest('SHA-256', buf);
@@ -1654,8 +1654,8 @@ _text
     cowsay: { desc:'ASCII cow says something',
       usage: 'cowsay [message]',
       examples: ['cowsay hello', 'cowsay hack the planet'],
-      run: (a) => {
-      const msg = a.join(' ') || 'hack the planet';
+      run: (args) => {
+      const msg = args.join(' ') || 'hack the planet';
       const safeMsg = escapeHtml(msg);
       const top = ' ' + '_'.repeat(msg.length + 2);
       const bot = ' ' + '-'.repeat(msg.length + 2);
@@ -1730,8 +1730,8 @@ ${bot}
       out('emacs: a great operating system, lacking only a decent editor', 'warn');
     }},
 
-    rm: { desc:'Remove files', run: (a) => {
-      if (a.includes('-rf') && (a.includes('/') || a.includes('--no-preserve-root'))) {
+    rm: { desc:'Remove files', run: (args) => {
+      if (args.includes('-rf') && (args.includes('/') || args.includes('--no-preserve-root'))) {
         out("you can't be serious", 'err');
         out('rm: it is dangerous to operate recursively on /', 'err');
         out('rm: use --no-preserve-root to override this safety check', 'dim');
@@ -1748,14 +1748,14 @@ ${bot}
      HISTORY + INPUT HANDLING
      ============================================================ */
   const history = [];
-  let histIdx = -1;
+  let historyIndex = -1;
 
   async function execute(raw) {
     const line = raw.trim();
     echoCmd(raw);
     if (!line) return;
     history.unshift(line);
-    histIdx = -1;
+    historyIndex = -1;
 
     // ---- Submit-prompt mode: capture next line as a leaderboard username ----
     if (submitPromptMode) {
@@ -1808,11 +1808,11 @@ ${bot}
   }
 
   // Global link-click activity logging (any <a> on the page)
-  document.body.addEventListener('click', (e) => {
-    const a = e.target.closest('a');
-    if (!a || !a.href || !/^https?:/i.test(a.href)) return;
+  document.body.addEventListener('click', (event) => {
+    const link = event.target.closest('a');
+    if (!link || !link.href || !/^https?:/i.test(link.href)) return;
     try {
-      const host = new URL(a.href).hostname;
+      const host = new URL(link.href).hostname;
       addActivity('info', `opened <span class="term-out-info">${escapeHtml(host)}</span>`);
     } catch (_) {}
   });
@@ -1839,16 +1839,16 @@ ${bot}
     if (e.key === 'ArrowUp') {
       e.preventDefault();
       if (!history.length) return;
-      histIdx = Math.min(histIdx+1, history.length-1);
-      termInput.value = history[histIdx];
+      historyIndex = Math.min(historyIndex+1, history.length-1);
+      termInput.value = history[historyIndex];
       setTimeout(() => termInput.setSelectionRange(termInput.value.length, termInput.value.length), 0);
       return;
     }
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      if (histIdx <= 0) { histIdx=-1; termInput.value=''; return; }
-      histIdx--;
-      termInput.value = history[histIdx];
+      if (historyIndex <= 0) { historyIndex=-1; termInput.value=''; return; }
+      historyIndex--;
+      termInput.value = history[historyIndex];
       return;
     }
     if (e.key === 'Tab') {
@@ -1872,7 +1872,7 @@ ${bot}
       e.preventDefault();
       echoCmd(termInput.value+'^C');
       termInput.value = '';
-      histIdx = -1;
+      historyIndex = -1;
       // In Python REPL, Ctrl+C drops back to bash (mirrors real python behavior)
       if (pythonMode) {
         pythonMode = false;
@@ -1892,16 +1892,16 @@ ${bot}
   // Expiry check: announcement disappears after end-of-day on `expires`. Empty/missing
   // message → null. Severity is normalized so the boot line picks up a known CSS class.
   function activeAnnouncement() {
-    const a = CONFIG.announcement;
-    if (!a || typeof a !== 'object' || !a.message) return null;
-    if (a.expires) {
-      const exp = new Date(a.expires + 'T23:59:59');
-      if (isNaN(exp) || exp < new Date()) return null;
+    const announcement = CONFIG.announcement;
+    if (!announcement || typeof announcement !== 'object' || !announcement.message) return null;
+    if (announcement.expires) {
+      const expiry = new Date(announcement.expires + 'T23:59:59');
+      if (isNaN(expiry) || expiry < new Date()) return null;
     }
-    const sev = a.severity === 'info' ? 'info'
-              : a.severity === 'alert' ? 'danger'
-              : 'warn';
-    return { message: String(a.message), sev };
+    const severity = announcement.severity === 'info' ? 'info'
+                  : announcement.severity === 'alert' ? 'danger'
+                  : 'warn';
+    return { message: String(announcement.message), severity };
   }
 
   function boot() {
@@ -1914,8 +1914,8 @@ ${bot}
     ];
     // Inject an admin-edited announcement line if one is active. Severity maps
     // to the boot-line color (warn/info/danger). Past-expiry → silently skipped.
-    const ann = activeAnnouncement();
-    if (ann) lines.push([`[ANNOUNCE] ${escapeHtml(ann.message)}`, ann.sev]);
+    const announcement = activeAnnouncement();
+    if (announcement) lines.push([`[ANNOUNCE] ${escapeHtml(announcement.message)}`, announcement.severity]);
     lines.push(
       // Live counter — fetched from /api/stats at boot. The placeholder span
       // gets its textContent replaced when the fetch resolves; if the API is
@@ -1931,8 +1931,8 @@ ${bot}
         printPage('home');
         return;
       }
-      const [t, c] = lines[i++];
-      if (t) out(t, c); else blank();
+      const [text, cssClass] = lines[i++];
+      if (text) out(text, cssClass); else blank();
       // After each line prints, retry the live-stats apply. Once the
       // #boot-solves placeholder is rendered, this no-ops on subsequent
       // calls (the element either gets its number or gets removed).
@@ -1964,7 +1964,7 @@ ${bot}
     const eventRow = document.getElementById('info-event-row');
     const eventEl  = document.getElementById('info-event');
     if (nextSpecial && eventRow && eventEl) {
-      eventEl.textContent = `${_Day(nextSpecial._d.getDay())} ${MONTHS_NICE[nextSpecial._d.getMonth()]} ${nextSpecial._d.getDate()} · ${nextSpecial.title}`;
+      eventEl.textContent = `${dayAbbrTitle(nextSpecial._d.getDay())} ${MONTHS_NICE[nextSpecial._d.getMonth()]} ${nextSpecial._d.getDate()} · ${nextSpecial.title}`;
       eventRow.style.display = '';
     } else if (eventRow) {
       // Re-run safety: if there are no upcoming specials, hide a row that
@@ -2022,11 +2022,11 @@ ${bot}
 
     // Quick Links + topbar Join button
     setHref('a.btn-register', CONFIG.links.signup);
-    document.querySelectorAll('a').forEach(a => {
-      const href = a.getAttribute('href') || '';
-      if (href.includes('PMCYB/club_signup')) a.href = CONFIG.links.signup;
-      else if (href.includes('theroost.oit.edu/feeds')) a.href = CONFIG.links.roost;
-      else if (href.includes('discord.gg/EXAMPLE') || (href.includes('discord.gg') && a.textContent.includes('EXAMPLE'))) a.href = CONFIG.links.discord;
+    document.querySelectorAll('a').forEach(link => {
+      const href = link.getAttribute('href') || '';
+      if (href.includes('PMCYB/club_signup')) link.href = CONFIG.links.signup;
+      else if (href.includes('theroost.oit.edu/feeds')) link.href = CONFIG.links.roost;
+      else if (href.includes('discord.gg/EXAMPLE') || (href.includes('discord.gg') && link.textContent.includes('EXAMPLE'))) link.href = CONFIG.links.discord;
     });
 
     // QR widget — show only on the kiosk *.workers.dev deploy, never on the
@@ -2067,7 +2067,7 @@ ${bot}
   // a short cap) so the home-page terminal printout reflects the latest
   // admin-edited values rather than the inline fallback.
   const remoteConfigReady = fetch('/api/config')
-    .then(r => r.ok ? r.json() : null)
+    .then(response => response.ok ? response.json() : null)
     .then(remote => {
       if (!remote) return;
       mergeRemoteConfig(remote);
@@ -2102,22 +2102,22 @@ ${bot}
      Race detail: the boot animation prints lines with setTimeout,
      so the #boot-solves placeholder doesn't exist until ~600ms in.
      The fetch usually resolves first. We store the result in
-     `_bootSolvesValue` and apply it whenever both (a) we have a
+     `bootSolvesValue` and apply it whenever both (a) we have a
      value and (b) the element has been rendered. boot()'s tick
      calls applyBootSolves() after every line so the "render is
      ready" half of the race is checked frequently.
      ============================================================ */
-  let _bootSolvesValue = undefined;  // undefined = pending; null = failed; number = ok
+  let bootSolvesValue = undefined;  // undefined = pending; null = failed; number = ok
   function applyBootSolves() {
-    if (_bootSolvesValue === undefined) return;
+    if (bootSolvesValue === undefined) return;
     // Boot-line placeholder (under "[ OK ] CTF subsystem ready" in the boot animation)
     const bootEl = document.getElementById('boot-solves');
     if (bootEl) {
-      if (_bootSolvesValue === null) {
+      if (bootSolvesValue === null) {
         const line = bootEl.closest('.term-line');
         if (line) line.remove();
       } else {
-        bootEl.textContent = _bootSolvesValue.toLocaleString();
+        bootEl.textContent = bootSolvesValue.toLocaleString();
       }
     }
     // QR widget — kiosk-only stats line under the scan→site label.
@@ -2125,18 +2125,18 @@ ${bot}
     // so the kiosk widget doesn't show "…" indefinitely.
     const qrEl     = document.getElementById('qr-solves');
     const qrLine   = document.getElementById('qr-solves-line');
-    if (qrEl && qrLine && typeof _bootSolvesValue === 'number') {
-      qrEl.textContent = _bootSolvesValue.toLocaleString();
+    if (qrEl && qrLine && typeof bootSolvesValue === 'number') {
+      qrEl.textContent = bootSolvesValue.toLocaleString();
       qrLine.hidden = false;
     }
   }
   function updateBootSolves(n) {
-    _bootSolvesValue = (typeof n === 'number' && isFinite(n)) ? n : null;
+    bootSolvesValue = (typeof n === 'number' && isFinite(n)) ? n : null;
     applyBootSolves();
   }
   fetch('/api/stats')
-    .then(r => r.ok ? r.json() : Promise.reject(r.status))
-    .then(d => updateBootSolves(d && typeof d.total === 'number' ? d.total : null))
+    .then(response => response.ok ? response.json() : Promise.reject(response.status))
+    .then(data => updateBootSolves(data && typeof data.total === 'number' ? data.total : null))
     .catch(() => updateBootSolves(null));
 
   // Periodic refresh so the kiosk QR widget + boot line + sidebar count
@@ -2148,9 +2148,9 @@ ${bot}
   const STATS_POLL_MS = 60 * 60 * 1000;
   setInterval(() => {
     fetch('/api/stats')
-      .then(r => r.ok ? r.json() : null)
-      .then(d => {
-        if (d && typeof d.total === 'number') updateBootSolves(d.total);
+      .then(response => response.ok ? response.json() : null)
+      .then(data => {
+        if (data && typeof data.total === 'number') updateBootSolves(data.total);
       })
       .catch(() => {});
   }, STATS_POLL_MS);
@@ -2160,5 +2160,5 @@ ${bot}
   // (local file:// preview, Worker down) we fall through to inline defaults.
   Promise.race([
     remoteConfigReady,
-    new Promise(r => setTimeout(r, 500)),
+    new Promise(resolve => setTimeout(resolve, 500)),
   ]).then(() => boot());
